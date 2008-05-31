@@ -4,9 +4,13 @@
 import MultipartPostHandler, urllib2, cookielib
 import os, sys, re, md5, random
 import urllib
-from pdb import set_trace
+import logging
+
 from BeautifulSoup import BeautifulSoup
+from pdb import set_trace
 from xml.dom import minidom
+
+logging.basicConfig(level=logging.DEBUG)
 
 ####
 # 05/2008 Alexander Atemenko <svetlyak.40wt@gmail.com>
@@ -61,6 +65,7 @@ def print_albums(albums):
         print '%s\t%s' % album
 
 def post_img(cookies,img,album):
+    logger = logging.getLogger('post_img')
     opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookies), MultipartPostHandler.MultipartPostHandler)
 
     tags = 'бла, фотка, ночь'
@@ -77,7 +82,7 @@ def post_img(cookies,img,album):
     source.seek(0)
     hash = md5.new(source.read()).hexdigest()
 
-    print ('photo-start')
+    logger.debug('photo-start')
     # START
     tmp_file = '/tmp/data.xml'
     f = open(tmp_file, 'wt')
@@ -102,8 +107,13 @@ def post_img(cookies,img,album):
 
     try:
         data = opener.open(UPLOAD_URL, params).read()
-        print data
+        logger.debug(data)
+        response = minidom.parseString(data).firstChild
+        if response.attributes['status'].value == 'error':
+            logger.error('error during upload, with code %s' % response.attributes['exception'].value)
+            sys.exit(1)
     except urllib2.URLError, err:
+        logger.error(err)
         return err
 
     source.seek(0)
@@ -114,7 +124,7 @@ def post_img(cookies,img,album):
         if not data:
             break
 
-        print 'photo-piece'
+        logger.debug('photo-piece')
 
         piece = open(piece_filename, 'wb')
         piece.write(data)
@@ -131,15 +141,16 @@ def post_img(cookies,img,album):
 
         try:
             data = opener.open(UPLOAD_URL, params).read()
-            print data
+            logger.debug(data)
         except urllib2.URLError, err:
+            logger.error(err)
             return err
 
         offset += source.tell()
         piece.close()
         os.remove(piece_filename)
 
-    print 'photo-checksum'
+    logger.debug( 'photo-checksum')
 
     params = {
         'query-type': 'photo-checksum',
@@ -149,11 +160,12 @@ def post_img(cookies,img,album):
 
     try:
         data = opener.open(UPLOAD_URL, params).read()
-        print data
+        logger.debug(data)
     except urllib2.URLError, err:
+        logger.error(err)
         return err
 
-    print 'photo-finish'
+    logger.debug('photo-finish')
 
     params = {
         'query-type': 'photo-finish',
@@ -162,8 +174,9 @@ def post_img(cookies,img,album):
 
     try:
         data = opener.open(UPLOAD_URL, params).read()
-        print data
+        logger.debug(data)
     except urllib2.URLError, err:
+        logger.error(err)
         return err
 
 
@@ -189,10 +202,11 @@ def createOpener(user, passwd):
     return cj
 
 def auth(user,password):
+    logger = logging.getLogger('auth')
     cj = createOpener(user, password)
     for cookie in cj:
         if cookie.name == "yandex_login":
-            # print cj
+            logger.debug(cj)
             return cj
     return None
 
