@@ -30,6 +30,8 @@ from xml.dom import minidom
 
 logging.basicConfig(level=logging.WARNING)
 
+VERSION = '0.2.0'
+
 try:
     from pyexiv2 import Image as ImageExif
 except:
@@ -282,12 +284,18 @@ def main():
     from optparse import OptionParser
     parser = OptionParser()
     parser.add_option( '-d', '--debug', dest='debug', action='store_true', help='Output debug information.', default=False)
+    parser.add_option( '--version', dest='version', action='store_true', help='Show version number and quit.', default=False)
     parser.add_option( '-u', '--user', dest='username', help='Your Yandex login.')
     parser.add_option( '-p', '--pass', dest='password', help='Your password.')
     parser.add_option( '--albums', action='store_true', dest='album_list', help='Show album list.', default=False)
     parser.add_option( '-a', '--album', dest='album', type='int', help='Album to upload to.')
     parser.add_option( '--upload', dest='files', metavar='FILE LIST', action='callback', callback=files_callback, help='File list to upload' )
     (options, args) = parser.parse_args()
+
+    if options.version:
+        print('Python uploader for http://fotki.yandex.ru, version %s.' % VERSION)
+        print('For more information and new versions, visit http://svetlyak.ru.')
+        sys.exit(0)
 
     if options.debug:
         logging.getLogger().setLevel(logging.DEBUG)
