@@ -13,6 +13,12 @@ from xml.dom import minidom
 
 logging.basicConfig(level=logging.DEBUG)
 
+try:
+    from pyexiv2 import Image as ImageExif
+except:
+    logging.getLogger('start').warning('can\'t find python-pyexiv2 library, exif extraction will be disabled.')
+
+
 ####
 # 05/2008 Alexander Atemenko <svetlyak.40wt@gmail.com>
 #
@@ -69,16 +75,23 @@ def post_img(cookies, img, album, username):
     logger = logging.getLogger('post_img')
     opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookies), MultipartPostHandler.MultipartPostHandler)
 
-    tags = 'бла, фотка, ночь'
-    title = 'Тестовая фоточга'
-    description = 'тестовое описание'
+    filename = os.path.split(img)[-1]
+    tags = ''
+    title = filename
+    description = ''
+
+    if ImageExif:
+        exif = ImageExif(img)
+        exif.readMetadata()
+        tags = ','.join(exif['Iptc.Application2.Keywords'])
+        title = exif['Iptc.Application2.ObjectName']
+        description = exif['Exif.Image.ImageDescription'] or exif['Iptc.Application2.Caption']
 
     source = open(img, 'rb')
     source.seek(0, 2)
     file_size = source.tell()
     piece_size = 64000
 
-    filename = os.path.split(img)[-1]
     sid = str(int(time.time()))
     source.seek(0)
     hash = md5.new(source.read()).hexdigest()
