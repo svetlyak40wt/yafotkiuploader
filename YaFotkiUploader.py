@@ -82,6 +82,8 @@ def post_img(cookies,img,album):
     source.seek(0)
     hash = md5.new(source.read()).hexdigest()
 
+    logger.debug('md5hash: %s, sid: %s, file-size: %s, piece-size: %s' % (hash, sid, file_size, piece_size))
+
     logger.debug('photo-start')
     # START
     tmp_file = '/tmp/data.xml'
@@ -112,8 +114,10 @@ def post_img(cookies,img,album):
         if response.attributes['status'].value == 'error':
             logger.error('error during upload, with code %s' % response.attributes['exception'].value)
             sys.exit(1)
+        upload_cookie = response.attributes['cookie'].value
     except urllib2.URLError, err:
         logger.error(err)
+        logger.error(err.read())
         return err
 
     source.seek(0)
@@ -144,6 +148,7 @@ def post_img(cookies,img,album):
             logger.debug(data)
         except urllib2.URLError, err:
             logger.error(err)
+            logger.error(err.read())
             return err
 
         offset += source.tell()
@@ -154,8 +159,8 @@ def post_img(cookies,img,album):
 
     params = {
         'query-type': 'photo-checksum',
-        'cookie': hash,
-        'size': str(piece_size),
+        'cookie': upload_cookie,
+        'size': str(file_size),
     }
 
     try:
@@ -163,13 +168,14 @@ def post_img(cookies,img,album):
         logger.debug(data)
     except urllib2.URLError, err:
         logger.error(err)
+        logger.error(err.read())
         return err
 
     logger.debug('photo-finish')
 
     params = {
         'query-type': 'photo-finish',
-        'cookie': hash,
+        'cookie': upload_cookie,
     }
 
     try:
@@ -177,6 +183,7 @@ def post_img(cookies,img,album):
         logger.debug(data)
     except urllib2.URLError, err:
         logger.error(err)
+        logger.error(err.read())
         return err
 
 
