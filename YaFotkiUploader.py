@@ -159,7 +159,7 @@ def post_img(cookies,img,album):
 
     params = {
         'query-type': 'photo-checksum',
-        'cookie': upload_cookie,
+        'cookie': hash,
         'size': str(file_size),
     }
 
