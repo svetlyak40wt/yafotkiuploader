@@ -115,7 +115,7 @@ def post_img(cookies, img, album, username):
         if response.attributes['status'].value == 'error':
             logger.error('error during upload, with code %s' % response.attributes['exception'].value)
             sys.exit(1)
-        upload_cookie = response.attributes['cookie'].value
+        upload_cookie = str(response.attributes['cookie'].value)
     except urllib2.URLError, err:
         logger.error(err)
         logger.error(err.read())
@@ -139,7 +139,7 @@ def post_img(cookies, img, album, username):
 
         params = {
             'query-type': 'photo-piece',
-            'cookie': hash,
+            'cookie': upload_cookie,
             'offset': str(offset),
             'fragment': piece,
         }
@@ -160,7 +160,7 @@ def post_img(cookies, img, album, username):
 
     params = {
         'query-type': 'photo-checksum',
-        'cookie': hash,
+        'cookie': upload_cookie,
         'size': str(file_size),
     }
 
@@ -204,21 +204,16 @@ def post_img(cookies, img, album, username):
         'cookie': upload_cookie,
     }
 
-    tries = 30
-    while tries > 0:
-        try:
-            data = opener.open(UPLOAD_URL, params).read()
-            logger.debug(data)
+    try:
+        data = opener.open(UPLOAD_URL, params).read()
+        logger.debug(data)
 
-            response = minidom.parseString(data).firstChild
-            if response.attributes['status'].value == 'ok':
-                break
-            if response.attributes['status'].value == 'error':
-                logger.error('error during upload, with code %s' % response.attributes['exception'].value)
-        except urllib2.URLError, err:
-            logger.error(err)
-            logger.error(err.read())
-        tries -= 1
+        response = minidom.parseString(data).firstChild
+        if response.attributes['status'].value == 'error':
+            logger.error('error during upload, with code %s' % response.attributes['exception'].value)
+    except urllib2.URLError, err:
+        logger.error(err)
+        logger.error(err.read())
 
 
 def post(cookie, img, album, username):
