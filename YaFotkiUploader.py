@@ -1,24 +1,6 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
-import MultipartPostHandler, urllib2, cookielib
-import os, sys, re, md5, random
-import urllib
-import logging
-import time
-
-from BeautifulSoup import BeautifulSoup
-from pdb import set_trace
-from xml.dom import minidom
-
-logging.basicConfig(level=logging.DEBUG)
-
-try:
-    from pyexiv2 import Image as ImageExif
-except:
-    logging.getLogger('start').warning('can\'t find python-pyexiv2 library, exif extraction will be disabled.')
-
-
 ####
 # 05/2008 Alexander Atemenko <svetlyak.40wt@gmail.com>
 #
@@ -35,6 +17,23 @@ except:
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
+
+import MultipartPostHandler, urllib2, cookielib
+import os, sys, re, md5, random
+import urllib
+import logging
+import time
+
+from BeautifulSoup import BeautifulSoup
+from pdb import set_trace
+from xml.dom import minidom
+
+logging.basicConfig(level=logging.WARNING)
+
+try:
+    from pyexiv2 import Image as ImageExif
+except:
+    logging.getLogger('start').warning('can\'t find python-pyexiv2 library, exif extraction will be disabled.')
 
 ALBUMS_URL= 'http://fotki.yandex.ru/users/%s/albums/'
 UPLOAD_URL = 'http://up.fotki.yandex.ru/upload'
@@ -125,10 +124,14 @@ def post_img(cookies, img, album, username):
         data = opener.open(UPLOAD_URL, params).read()
         logger.debug(data)
         response = minidom.parseString(data).firstChild
-        if response.attributes['status'].value == 'error':
-            logger.error('error during upload, with code %s' % response.attributes['exception'].value)
+        a = response.attributes
+        if a['status'].value == 'error':
+            if a['exception'].value == '3':
+                logger.error('Album with id %s does not exist.' % album)
+            else:
+                logger.error('Error during upload, with code %s' % a['exception'].value)
             sys.exit(1)
-        upload_cookie = str(response.attributes['cookie'].value)
+        upload_cookie = str(a['cookie'].value)
     except urllib2.URLError, err:
         logger.error(err)
         logger.error(err.read())
@@ -278,12 +281,16 @@ def files_callback(option, opt_str, value, parser):
 def main():
     from optparse import OptionParser
     parser = OptionParser()
+    parser.add_option( '-d', '--debug', dest='debug', action='store_true', help='Output debug information.', default=False)
     parser.add_option( '-u', '--user', dest='username', help='Your Yandex login.')
     parser.add_option( '-p', '--pass', dest='password', help='Your password.')
-    parser.add_option( '--albums', action='store_true', dest='album_list', help='Show album list.', default = False)
-    parser.add_option( '-a', '--album', dest='album', type='int', help='Album to upload to.', default=1)
+    parser.add_option( '--albums', action='store_true', dest='album_list', help='Show album list.', default=False)
+    parser.add_option( '-a', '--album', dest='album', type='int', help='Album to upload to.')
     parser.add_option( '--upload', dest='files', metavar='FILE LIST', action='callback', callback=files_callback, help='File list to upload' )
     (options, args) = parser.parse_args()
+
+    if options.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
 
     if options.album_list:
         if not options.username or not options.password:
@@ -292,7 +299,17 @@ def main():
         cookie=auth(options.username, options.password)
         print_albums( get_albums( options.username, cookie ) )
     else:
+        if not options.username or not options.password:
+            print 'Please, specify username and password'
+            sys.exit(2)
+
         cookie=auth(options.username, options.password)
+
+        if not options.album:
+            print 'Please, specify an album\'s ID'
+            print_albums( get_albums( options.username, cookie ) )
+            sys.exit(2)
+
         if cookie:
             for file in options.files:
                 post(cookie, file, options.album, options.username)
