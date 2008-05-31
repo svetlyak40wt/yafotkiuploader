@@ -30,7 +30,7 @@ from xml.dom import minidom
 
 logging.basicConfig(level=logging.WARNING)
 
-VERSION = '0.2.0'
+VERSION = '0.2.1'
 
 try:
     from pyexiv2 import Image as ImageExif
@@ -84,9 +84,12 @@ def post_img(cookies, img, album, username):
     if ImageExif:
         exif = ImageExif(img)
         exif.readMetadata()
-        tags = ','.join(exif['Iptc.Application2.Keywords'])
-        title = exif['Iptc.Application2.ObjectName']
-        description = exif['Exif.Image.ImageDescription'] or exif['Iptc.Application2.Caption']
+        try: tags = ','.join(exif['Iptc.Application2.Keywords'])
+        except KeyError: pass
+        try: title = exif['Iptc.Application2.ObjectName']
+        except KeyError: pass
+        try: description = exif['Exif.Image.ImageDescription'] or exif['Iptc.Application2.Caption']
+        except KeyError: pass
 
     source = open(img, 'rb')
     source.seek(0, 2)
