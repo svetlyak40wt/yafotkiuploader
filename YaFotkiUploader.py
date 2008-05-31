@@ -1,6 +1,13 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 
+import MultipartPostHandler, urllib2, cookielib
+import os, sys, re, md5, random
+import urllib
+from pdb import set_trace
+from BeautifulSoup import BeautifulSoup
+from xml.dom import minidom
+
 ####
 # 05/2008 Alexander Atemenko <svetlyak.40wt@gmail.com>
 #
@@ -18,71 +25,155 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-import MultipartPostHandler, urllib2, cookielib
-import os.path, sys, re
-import urllib
-from pdb import set_trace
-from BeautifulSoup import BeautifulSoup
-
-DEBUG = False
-
-UPLOAD_URL='http://img.fotki.yandex.ru/modify'
 ALBUMS_URL= 'http://fotki.yandex.ru/users/%s/albums/'
+UPLOAD_URL = 'http://up.fotki.yandex.ru/upload'
 
-RET_URL = 'http://fotki.yandex.ru/actions/ajax_upload_fotka.xml'
+def get_albums(username, cookies):
+    opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookies), MultipartPostHandler.MultipartPostHandler)
 
-def get_albums(username):
-    all_albums_url = ALBUMS_URL % username
-    doc = urllib2.urlopen( all_albums_url )
-    soup = BeautifulSoup(doc)
-    albums = soup.findAll('div', attrs={'class':'album'})
-    result = []
-    for album in albums:
-        album = str(album.find('h3').find('a'))
-        r = re.compile('.*/(\d+)/.*>(.*)</a>$')
-        m = r.match( album )
-        if m:
-            result.append( (m.group(1), m.group(2)) )
-    return result
+    tmp_file = '/tmp/command.xml'
+    f = open(tmp_file, 'wt')
+    f.write('<?xml version="1.0" encoding="utf-8"?><client-upload name="get-albums"/>')
+    f.close()
+
+    params = {
+        'query-type' : 'photo-command',
+        'command-xml' : open(tmp_file, 'rt'),
+    }
+
+    try:
+        data = opener.open(UPLOAD_URL, params).read()
+        xml = minidom.parseString(data)
+        albums = []
+        for album in xml.getElementsByTagName('album'):
+            id = album.attributes['id'].value
+            title = album.getElementsByTagName('title')[0].firstChild.nodeValue
+            albums.append( (id, title) )
+        return albums
+
+    except urllib2.URLError, err:
+        print err
+        pass
+    return []
 
 def print_albums(albums):
     for album in albums:
-        print '%s) %s' % album
+        print '%s\t%s' % album
 
 def post_img(cookies,img,album):
+    opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookies), MultipartPostHandler.MultipartPostHandler)
 
-        opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookies), MultipartPostHandler.MultipartPostHandler)
+    tags = 'бла, фотка, ночь'
+    title = 'Тестовая фоточга'
+    description = 'тестовое описание'
+
+    source = open(img, 'rb')
+    source.seek(0, 2)
+    file_size = source.tell()
+    piece_size = 64000
+
+    filename = os.path.split(img)[-1]
+    sid = str(random.randint(1000000000000, 9999999999999))
+    source.seek(0)
+    hash = md5.new(source.read()).hexdigest()
+
+    print ('photo-start')
+    # START
+    tmp_file = '/tmp/data.xml'
+    f = open(tmp_file, 'wt')
+    f.write('<?xml version="1.0" encoding="utf-8"?><client-upload md5="%(md5)s" cookie="%(md5)s%(sid)s"><filename>%(filename)s</filename><title>%(title)s</title><description>%(description)s</description><albumId>%(album)s</albumId><copyright>0</copyright><tags>%(tags)s</tags></client-upload>' % {
+        'md5': hash,
+        'sid': sid,
+        'filename': filename,
+        'title': title,
+        'album': album,
+        'tags': tags,
+        'description': description,
+    })
+    f.close()
+
+    params = {
+        'query-type': 'photo-start',
+        'file-size': str(file_size),
+        'piece-size': str(piece_size),
+        'checksum': hash,
+        'client-xml': open(tmp_file, 'rt'),
+    }
+
+    try:
+        data = opener.open(UPLOAD_URL, params).read()
+        print data
+    except urllib2.URLError, err:
+        return err
+
+    source.seek(0)
+    piece_filename = '/tmp/frag.bin'
+    offset = 0
+    while 1:
+        data = source.read(piece_size)
+        if not data:
+            break
+
+        print 'photo-piece'
+
+        piece = open(piece_filename, 'wb')
+        piece.write(data)
+        piece.close()
+
+        piece = open(piece_filename, 'rb')
 
         params = {
-                'album' : str(album),
-                'title' : os.path.basename(img),
-#                'description': '',
-                'tags': 'тест',
-#                'xxx': '',
-#                'mxxx': '',
-#                'post2yaru': '',
-#                'access': 'public',
-#                'disable_comments': '',
-                'image_source' : open(img, 'rb'),
-                'retpage': RET_URL,
-#                'ut': '1',
-#                'source_login': 'art',
-#                'source_type': 'profile',
-#                'type': 'photo',
-#                'replies': 'yes',
-#                'idlist': '',
-#                'xslt': 'no',
+            'query-type': 'photo-piece',
+            'cookie': hash,
+            'offset': str(offset),
+            'fragment': piece,
         }
 
         try:
-                print opener.open(UPLOAD_URL, params).read()
+            data = opener.open(UPLOAD_URL, params).read()
+            print data
         except urllib2.URLError, err:
-                return err
-                pass
+            return err
+
+        offset += source.tell()
+        piece.close()
+        os.remove(piece_filename)
+
+    print 'photo-checksum'
+
+    params = {
+        'query-type': 'photo-checksum',
+        'cookie': hash,
+        'size': str(piece_size),
+    }
+
+    try:
+        data = opener.open(UPLOAD_URL, params).read()
+        print data
+    except urllib2.URLError, err:
+        return err
+
+    print 'photo-finish'
+
+    params = {
+        'query-type': 'photo-finish',
+        'cookie': hash,
+    }
+
+    try:
+        data = opener.open(UPLOAD_URL, params).read()
+        print data
+    except urllib2.URLError, err:
+        return err
+
 
 def post(cookie,img,album):
-        print 'post: %s,%s' % (album,img)
-        print 'replay: %s' % post_img(cookie,img,album)
+    if os.path.exists(img):
+        print 'Uploading %s to album %s' % (img, album)
+        post_img(cookie,img,album)
+    else:
+        print "Can't find image %s on the disk" % img
+
 
 def createOpener(user, passwd):
     cj = cookielib.CookieJar()
@@ -101,6 +192,7 @@ def auth(user,password):
     cj = createOpener(user, password)
     for cookie in cj:
         if cookie.name == "yandex_login":
+            # print cj
             return cj
     return None
 
@@ -131,10 +223,11 @@ def main():
     (options, args) = parser.parse_args()
 
     if options.album_list:
-        if not options.username:
-            print 'Please, specify username to get album list'
+        if not options.username or not options.password:
+            print 'Please, specify username and password to get album list'
             sys.exit(2)
-        print_albums( get_albums( options.username ) )
+        cookie=auth(options.username, options.password)
+        print_albums( get_albums( options.username, cookie ) )
     else:
         cookie=auth(options.username, options.password)
         if cookie:
