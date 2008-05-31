@@ -5,6 +5,7 @@ import MultipartPostHandler, urllib2, cookielib
 import os, sys, re, md5, random
 import urllib
 import logging
+import time
 
 from BeautifulSoup import BeautifulSoup
 from pdb import set_trace
@@ -64,7 +65,7 @@ def print_albums(albums):
     for album in albums:
         print '%s\t%s' % album
 
-def post_img(cookies,img,album):
+def post_img(cookies, img, album, username):
     logger = logging.getLogger('post_img')
     opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookies), MultipartPostHandler.MultipartPostHandler)
 
@@ -78,7 +79,7 @@ def post_img(cookies,img,album):
     piece_size = 64000
 
     filename = os.path.split(img)[-1]
-    sid = str(random.randint(1000000000000, 9999999999999))
+    sid = str(int(time.time()))
     source.seek(0)
     hash = md5.new(source.read()).hexdigest()
 
@@ -155,7 +156,7 @@ def post_img(cookies,img,album):
         piece.close()
         os.remove(piece_filename)
 
-    logger.debug( 'photo-checksum')
+    logger.debug('photo-checksum')
 
     params = {
         'query-type': 'photo-checksum',
@@ -169,7 +170,32 @@ def post_img(cookies,img,album):
     except urllib2.URLError, err:
         logger.error(err)
         logger.error(err.read())
-        return err
+
+        logger.debug('check-upload')
+        tmp_file = '/tmp/data.xml'
+        f = open(tmp_file, 'wt')
+        f.write('<?xml version="1.0" encoding="utf-8"?><client-upload name="check-upload" cookie="%(md5)s%(sid)s" login="%(login)s"></client-upload>' % {
+            'md5': hash,
+            'sid': sid,
+            'login': username,
+        })
+        f.close()
+
+        params = {
+            'query-type': 'photo-command',
+            'command-xml': open(tmp_file, 'rt'),
+        }
+        try:
+            data = opener.open(UPLOAD_URL, params).read()
+            logger.debug(data)
+            response = minidom.parseString(data).firstChild
+            if response.nodeName != 'images':
+                logger.error('error upload check: %s' % data)
+                sys.exit(1)
+        except urllib2.URLError, err:
+            logger.error(err)
+            logger.error(err.read())
+            return err
 
     logger.debug('photo-finish')
 
@@ -178,19 +204,27 @@ def post_img(cookies,img,album):
         'cookie': upload_cookie,
     }
 
-    try:
-        data = opener.open(UPLOAD_URL, params).read()
-        logger.debug(data)
-    except urllib2.URLError, err:
-        logger.error(err)
-        logger.error(err.read())
-        return err
+    tries = 30
+    while tries > 0:
+        try:
+            data = opener.open(UPLOAD_URL, params).read()
+            logger.debug(data)
+
+            response = minidom.parseString(data).firstChild
+            if response.attributes['status'].value == 'ok':
+                break
+            if response.attributes['status'].value == 'error':
+                logger.error('error during upload, with code %s' % response.attributes['exception'].value)
+        except urllib2.URLError, err:
+            logger.error(err)
+            logger.error(err.read())
+        tries -= 1
 
 
-def post(cookie,img,album):
+def post(cookie, img, album, username):
     if os.path.exists(img):
         print 'Uploading %s to album %s' % (img, album)
-        post_img(cookie,img,album)
+        post_img(cookie, img, album, username)
     else:
         print "Can't find image %s on the disk" % img
 
@@ -253,7 +287,7 @@ def main():
         cookie=auth(options.username, options.password)
         if cookie:
             for file in options.files:
-                post(cookie, file, options.album)
+                post(cookie, file, options.album, options.username)
             sys.exit(0)
         else:
             print( 'authorization error' )
