@@ -4,6 +4,9 @@
 ####
 # 05/2008 Alexander Atemenko <svetlyak.40wt@gmail.com>
 #
+# Special thanks to:
+# Grigory Bakunov <bobuk@justos.org>
+#
 # This program is free software: you can redistribute it and/or modify
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 3 of the License, or
@@ -31,7 +34,7 @@ from StringIO import StringIO
 
 logging.basicConfig(level=logging.WARNING)
 
-VERSION = '0.2.1'
+VERSION = '0.2.2'
 
 try:
     from pyexiv2 import Image as ImageExif
