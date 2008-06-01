@@ -140,7 +140,6 @@ def post_img(cookies, img, album, username):
         return err
 
     source.seek(0)
-    piece_filename = '/tmp/frag.bin'
     offset = 0
     while 1:
         data = source.read(piece_size)
@@ -149,11 +148,7 @@ def post_img(cookies, img, album, username):
 
         logger.debug('photo-piece')
 
-        piece = open(piece_filename, 'wb')
-        piece.write(data)
-        piece.close()
-
-        piece = open(piece_filename, 'rb')
+        piece = StringIO(data)
 
         params = {
             'query-type': 'photo-piece',
@@ -171,8 +166,6 @@ def post_img(cookies, img, album, username):
             return err
 
         offset += source.tell()
-        piece.close()
-        os.remove(piece_filename)
 
     logger.debug('photo-checksum')
 
