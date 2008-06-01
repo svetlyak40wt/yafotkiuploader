@@ -74,7 +74,6 @@ class MultipartPostHandler(urllib2.BaseHandler):
 
             if len(v_files) == 0:
                 data = urllib.urlencode(v_vars, doseq)
-                print data
             else:
                 boundary, data = self.multipart_encode(v_vars, v_files)
                 contenttype = 'multipart/form-data; boundary=%s' % boundary
