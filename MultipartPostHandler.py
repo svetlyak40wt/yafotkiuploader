@@ -42,7 +42,7 @@ import urllib
 import urllib2
 import mimetools, mimetypes
 import os, stat
-
+import md5
 class Callable:
     def __init__(self, anycallable):
         self.__call__ = anycallable
@@ -63,6 +63,9 @@ class MultipartPostHandler(urllib2.BaseHandler):
                  for(key, value) in data.items():
                      if type(value) == file:
                          v_files.append((key, value))
+                     elif 'seek' in dir(value):
+                         # value is a readable object
+                         v_files.append((key, value))                         
                      else:
                          v_vars.append((key, value))
             except TypeError:
@@ -71,6 +74,7 @@ class MultipartPostHandler(urllib2.BaseHandler):
 
             if len(v_files) == 0:
                 data = urllib.urlencode(v_vars, doseq)
+                print data
             else:
                 boundary, data = self.multipart_encode(v_vars, v_files)
                 contenttype = 'multipart/form-data; boundary=%s' % boundary
@@ -92,9 +96,17 @@ class MultipartPostHandler(urllib2.BaseHandler):
             buffer += 'Content-Disposition: form-data; name="%s"' % key
             buffer += '\r\n\r\n' + value + '\r\n'
         for(key, fd) in files:
-            file_size = os.fstat(fd.fileno())[stat.ST_SIZE]
-            filename = fd.name.split('/')[-1]
-            contenttype = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
+            try:
+                file_size = os.fstat(fd.fileno())[stat.ST_SIZE]
+                filename = fd.name.split('/')[-1]
+                contenttype = mimetypes.guess_type(filename)[0] or 'application/octet-stream'
+            except AttributeError, s:
+                if str(fd.__class__) == 'StringIO.StringIO':
+                    file_size = len(fd.getvalue())
+                    filename = md5.md5(fd.getvalue()).hexdigest()
+                    contenttype = 'application/octet-stream'
+                else:
+                    raise AttributeError(s)
             buffer += '--%s\r\n' % boundary
             buffer += 'Content-Disposition: form-data; name="%s"; filename="%s"\r\n' % (key, filename)
             buffer += 'Content-Type: %s\r\n' % contenttype

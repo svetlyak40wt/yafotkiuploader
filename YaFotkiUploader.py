@@ -27,6 +27,7 @@ import time
 from BeautifulSoup import BeautifulSoup
 from pdb import set_trace
 from xml.dom import minidom
+from StringIO import StringIO
 
 logging.basicConfig(level=logging.WARNING)
 
@@ -36,6 +37,7 @@ try:
     from pyexiv2 import Image as ImageExif
 except:
     logging.getLogger('start').warning('can\'t find python-pyexiv2 library, exif extraction will be disabled.')
+    ImageExif = None
 
 ALBUMS_URL= 'http://fotki.yandex.ru/users/%s/albums/'
 UPLOAD_URL = 'http://up.fotki.yandex.ru/upload'
@@ -43,14 +45,11 @@ UPLOAD_URL = 'http://up.fotki.yandex.ru/upload'
 def get_albums(username, cookies):
     opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookies), MultipartPostHandler.MultipartPostHandler)
 
-    tmp_file = '/tmp/command.xml'
-    f = open(tmp_file, 'wt')
-    f.write('<?xml version="1.0" encoding="utf-8"?><client-upload name="get-albums"/>')
-    f.close()
+    fake_file = StringIO('<?xml version="1.0" encoding="utf-8"?><client-upload name="get-albums"/>')
 
     params = {
         'query-type' : 'photo-command',
-        'command-xml' : open(tmp_file, 'rt'),
+        'command-xml' : fake_file
     }
 
     try:
@@ -67,6 +66,7 @@ def get_albums(username, cookies):
         print err
         pass
     return []
+
 
 def print_albums(albums):
     for album in albums:
@@ -104,9 +104,7 @@ def post_img(cookies, img, album, username):
 
     logger.debug('photo-start')
     # START
-    tmp_file = '/tmp/data.xml'
-    f = open(tmp_file, 'wt')
-    f.write('<?xml version="1.0" encoding="utf-8"?><client-upload md5="%(md5)s" cookie="%(md5)s%(sid)s"><filename>%(filename)s</filename><title>%(title)s</title><description>%(description)s</description><albumId>%(album)s</albumId><copyright>0</copyright><tags>%(tags)s</tags></client-upload>' % {
+    fake_file = StringIO('<?xml version="1.0" encoding="utf-8"?><client-upload md5="%(md5)s" cookie="%(md5)s%(sid)s"><filename>%(filename)s</filename><title>%(title)s</title><description>%(description)s</description><albumId>%(album)s</albumId><copyright>0</copyright><tags>%(tags)s</tags></client-upload>' % {
         'md5': hash,
         'sid': sid,
         'filename': filename,
@@ -115,14 +113,13 @@ def post_img(cookies, img, album, username):
         'tags': tags,
         'description': description,
     })
-    f.close()
 
     params = {
         'query-type': 'photo-start',
         'file-size': str(file_size),
         'piece-size': str(piece_size),
         'checksum': hash,
-        'client-xml': open(tmp_file, 'rt'),
+        'client-xml': fake_file,
     }
 
     try:
@@ -193,18 +190,15 @@ def post_img(cookies, img, album, username):
         logger.error(err.read())
 
         logger.debug('check-upload')
-        tmp_file = '/tmp/data.xml'
-        f = open(tmp_file, 'wt')
-        f.write('<?xml version="1.0" encoding="utf-8"?><client-upload name="check-upload" cookie="%(md5)s%(sid)s" login="%(login)s"></client-upload>' % {
+        fake_file = StringIO('<?xml version="1.0" encoding="utf-8"?><client-upload name="check-upload" cookie="%(md5)s%(sid)s" login="%(login)s"></client-upload>' % {
             'md5': hash,
             'sid': sid,
             'login': username,
         })
-        f.close()
 
         params = {
             'query-type': 'photo-command',
-            'command-xml': open(tmp_file, 'rt'),
+            'command-xml': fake_file,
         }
         try:
             data = opener.open(UPLOAD_URL, params).read()
