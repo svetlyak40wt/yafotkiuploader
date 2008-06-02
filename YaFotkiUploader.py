@@ -45,6 +45,24 @@ except:
 ALBUMS_URL= 'http://fotki.yandex.ru/users/%s/albums/'
 UPLOAD_URL = 'http://up.fotki.yandex.ru/upload'
 
+_conf = None
+def config(conffile='~/.fotki.conf'):
+    '''Simple config loader with singleton instance'''
+    global _conf
+    if _conf:
+        return _conf
+    res = {}
+    if '~' in conffile:
+        conffile = os.path.expanduser(conffile)
+    if os.path.isfile(conffile):
+        for line in (x.strip() for x in open(conffile).readlines()):
+            if '=' not in line:
+                continue
+            [key, value] = [x.strip() for x in line.split('=')]
+            res[key] = value
+    _conf = res
+    return _conf
+
 def get_albums(username, cookies):
     opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookies), MultipartPostHandler.MultipartPostHandler)
 
@@ -273,13 +291,34 @@ def files_callback(option, opt_str, value, parser):
             del rargs[0]
     setattr(parser.values, option.dest, value)
 
+def get_cookie(options):
+    username = options.username
+    if not username:
+        if 'username' in config():
+            username = config()['username']
+        else:
+            print 'Please, specify username'
+            sys.exit(2)
+
+    password = options.password
+    if not password:
+        if 'password' in config():
+            password = config()['password']
+        else:
+            import getpass
+            password = getpass.getpass('Input password: ')
+
+    cookie=auth(username, password)
+    return (username, cookie)
+
+
 def main():
     from optparse import OptionParser
     parser = OptionParser()
     parser.add_option( '-d', '--debug', dest='debug', action='store_true', help='Output debug information.', default=False)
     parser.add_option( '--version', dest='version', action='store_true', help='Show version number and quit.', default=False)
-    parser.add_option( '-u', '--user', dest='username', help='Your Yandex login.')
-    parser.add_option( '-p', '--pass', dest='password', help='Your password.')
+    parser.add_option( '-u', '--user', dest='username', help='Your Yandex login.', default=None)
+    parser.add_option( '-p', '--pass', dest='password', help='Your password.', default=None)
     parser.add_option( '--albums', action='store_true', dest='album_list', help='Show album list.', default=False)
     parser.add_option( '-a', '--album', dest='album', type='int', help='Album to upload to.')
     parser.add_option( '--upload', dest='files', metavar='FILE LIST', action='callback', callback=files_callback, help='File list to upload' )
@@ -293,27 +332,19 @@ def main():
     if options.debug:
         logging.getLogger().setLevel(logging.DEBUG)
 
+    (username, cookie) = get_cookie(options)
+    albums = get_albums( username, cookie )
     if options.album_list:
-        if not options.username or not options.password:
-            print 'Please, specify username and password to get album list'
-            sys.exit(2)
-        cookie=auth(options.username, options.password)
-        print_albums( get_albums( options.username, cookie ) )
+        print_albums( albums )
     else:
-        if not options.username or not options.password:
-            print 'Please, specify username and password'
-            sys.exit(2)
-
-        cookie=auth(options.username, options.password)
-
         if not options.album:
             print 'Please, specify an album\'s ID'
-            print_albums( get_albums( options.username, cookie ) )
+            print_albums( albums )
             sys.exit(2)
 
         if cookie:
             for file in options.files:
-                post(cookie, file, options.album, options.username)
+                post(cookie, file, options.album, username)
             sys.exit(0)
         else:
             print( 'authorization error' )
