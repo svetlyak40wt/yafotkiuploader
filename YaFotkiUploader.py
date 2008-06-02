@@ -45,8 +45,11 @@ except:
 ALBUMS_URL= 'http://fotki.yandex.ru/users/%s/albums/'
 UPLOAD_URL = 'http://up.fotki.yandex.ru/upload'
 
+CONFIG_PATH = '~/.fotki.conf'
+COOKIES_CACHE = '~/.fotki.cookies'
+
 _conf = None
-def config(conffile='~/.fotki.conf'):
+def config(conffile=CONFIG_PATH):
     '''Simple config loader with singleton instance'''
     global _conf
     if _conf:
@@ -57,12 +60,13 @@ def config(conffile='~/.fotki.conf'):
     if os.path.isfile(conffile):
         for line in (x.strip() for x in open(conffile).readlines()):
             if '=' not in line:
-                continue
-            [key, value] = [x.strip() for x in line.split('=')]
+                [key, value] = [line, True]
+            else:
+                [key, value] = [x.strip() for x in line.split('=')]
             res[key] = value
     _conf = res
     return _conf
-
+     
 def get_albums(username, cookies):
     opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookies), MultipartPostHandler.MultipartPostHandler)
 
@@ -254,8 +258,19 @@ def post(cookie, img, album, username):
 
 
 def createOpener(user, passwd):
-    cj = cookielib.CookieJar()
+    cj = cookielib.LWPCookieJar()
     opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cj))
+    ccache = COOKIES_CACHE
+    if '~' in ccache:
+        ccache = os.path.expanduser(ccache)
+    if 'use_cookies_cache' in config():
+        if os.path.isfile(ccache):
+            cj.load(ccache)
+            cj.clear_expired_cookies()
+            for ck in cj:
+                if ck.name == 'Session_id':
+                    logging.getLogger('auth').debug('Authorized by cookie')
+                    return cj
     print 'authorization as %s with password %s...' % (user, '*'* len(passwd))
     logging.getLogger('auth').debug('real password is %s' % passwd)
     data = {
@@ -265,6 +280,8 @@ def createOpener(user, passwd):
             }
     opener.open("http://passport.yandex.ru/passport?mode=auth",
                        urllib.urlencode(data))
+    if 'use_cookies_cache' in config():
+        cj.save(ccache)
     return cj
 
 def auth(user,password):
@@ -335,6 +352,10 @@ def main():
 
     (username, cookie) = get_cookie(options)
     albums = get_albums( username, cookie )
+    if not cookie:
+        print( 'Authorization error' )
+        sys.exit(1)
+
     if options.album_list:
         print_albums( albums )
     else:
@@ -343,13 +364,9 @@ def main():
             print_albums( albums )
             sys.exit(2)
 
-        if cookie:
-            for file in options.files:
-                post(cookie, file, options.album, username)
-            sys.exit(0)
-        else:
-            print( 'authorization error' )
-            sys.exit(1)
+        for file in options.files:
+            post(cookie, file, options.album, username)
+        sys.exit(0)
 
 if __name__ == "__main__":
     main()
