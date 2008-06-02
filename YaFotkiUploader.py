@@ -256,7 +256,8 @@ def post(cookie, img, album, username):
 def createOpener(user, passwd):
     cj = cookielib.CookieJar()
     opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cj))
-    print 'authorization as %s with password %s...' % (user, passwd )
+    print 'authorization as %s with password %s...' % (user, '*'* len(passwd))
+    logging.getLogger('auth').debug('real password is %s' % password)
     data = {
             'login':user,
             'passwd':passwd,
