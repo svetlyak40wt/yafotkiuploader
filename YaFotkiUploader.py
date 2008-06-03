@@ -198,7 +198,7 @@ def post_img(cookies, img, album, username):
     params = {
         'query-type': 'photo-checksum',
         'cookie': upload_cookie,
-        'size': str(file_size),
+        'size': str(piece_size),
     }
 
     try:
@@ -364,7 +364,7 @@ def main():
 
     if options.album_list:
         print_albums( albums )
-    else:
+    elif options.files:
         if not options.album:
             print 'Please, specify an album\'s ID'
             print_albums( albums )
@@ -372,7 +372,10 @@ def main():
 
         for file in options.files:
             post(cookie, file, options.album, username)
-        sys.exit(0)
+    else:
+        print 'Please, specify --upload or --albums option.'
+
+    sys.exit(0)
 
 if __name__ == "__main__":
     main()
