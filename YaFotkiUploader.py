@@ -267,7 +267,7 @@ def createAuthOpener(user, passwd):
             cj.load(ccache)
             cj.clear_expired_cookies()
             for ck in cj:
-                if ck.name == 'Session_id':
+                if ck.name == 'yandex_login' and ck.value == user:
                     logging.getLogger('auth').debug('Authorized by cookie')
                     return cj
 
@@ -356,10 +356,11 @@ def main():
         logging.getLogger().setLevel(logging.DEBUG)
 
     (username, cookie) = get_cookie(options)
-    albums = get_albums( username, cookie )
     if not cookie:
         print( 'Authorization error' )
         sys.exit(1)
+
+    albums = get_albums( username, cookie )
 
     if options.album_list:
         print_albums( albums )
