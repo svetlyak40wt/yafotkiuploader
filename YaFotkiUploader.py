@@ -55,8 +55,8 @@ def config(conffile=CONFIG_PATH):
     if _conf:
         return _conf
     res = {}
-    if '~' in conffile:
-        conffile = os.path.expanduser(conffile)
+
+    conffile = os.path.expanduser(conffile)
     if os.path.isfile(conffile):
         for line in (x.strip() for x in open(conffile).readlines()):
             if '=' not in line:
@@ -260,9 +260,7 @@ def post(cookie, img, album, username):
 def createOpener(user, passwd):
     cj = cookielib.LWPCookieJar()
     opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cj))
-    ccache = COOKIES_CACHE
-    if '~' in ccache:
-        ccache = os.path.expanduser(ccache)
+    ccache = os.path.expanduser(COOKIES_CACHE)
     if 'use_cookies_cache' in config():
         if os.path.isfile(ccache):
             cj.load(ccache)
