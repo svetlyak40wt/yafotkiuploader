@@ -278,7 +278,7 @@ def createOpener(user, passwd):
             'passwd':passwd,
             'twoweeks':'yes'
             }
-    opener.open("http://passport.yandex.ru/passport?mode=auth",
+    opener.open("https://passport.yandex.ru/passport?mode=auth",
                        urllib.urlencode(data))
     if 'use_cookies_cache' in config():
         cj.save(ccache)
