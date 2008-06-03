@@ -35,7 +35,7 @@ from StringIO import StringIO
 
 logging.basicConfig(level=logging.WARNING)
 
-VERSION = '0.2.2'
+VERSION = '0.2.3'
 
 try:
     from pyexiv2 import Image as ImageExif
