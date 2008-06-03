@@ -26,6 +26,7 @@ import os, sys, re, md5, random
 import urllib
 import logging
 import time
+import getpass
 
 from BeautifulSoup import BeautifulSoup
 from pdb import set_trace
@@ -66,7 +67,7 @@ def config(conffile=CONFIG_PATH):
             res[key] = value
     _conf = res
     return _conf
-     
+
 def get_albums(username, cookies):
     opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cookies), MultipartPostHandler.MultipartPostHandler)
 
@@ -257,7 +258,7 @@ def post(cookie, img, album, username):
         print "Can't find image %s on the disk" % img
 
 
-def createOpener(user, passwd):
+def createAuthOpener(user, passwd):
     cj = cookielib.LWPCookieJar()
     opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cj))
     ccache = os.path.expanduser(COOKIES_CACHE)
@@ -269,6 +270,10 @@ def createOpener(user, passwd):
                 if ck.name == 'Session_id':
                     logging.getLogger('auth').debug('Authorized by cookie')
                     return cj
+
+    if passwd is None:
+        passwd = getpass.getpass('Input password: ')
+
     print 'authorization as %s with password %s...' % (user, '*'* len(passwd))
     logging.getLogger('auth').debug('real password is %s' % passwd)
     data = {
@@ -284,11 +289,16 @@ def createOpener(user, passwd):
 
 def auth(user,password):
     logger = logging.getLogger('auth')
-    cj = createOpener(user, password)
+    cj = createAuthOpener(user, password)
     for cookie in cj:
         if cookie.name == "yandex_login":
-            logger.debug(cj)
-            return cj
+            if cookie.value == user:
+                logger.debug(cj)
+                return cj
+            else:
+                cache = os.path.expanduser(COOKIES_CACHE)
+                if os.path.exists(cache):
+                    os.remove(cache)
     return None
 
 def files_callback(option, opt_str, value, parser):
@@ -320,11 +330,8 @@ def get_cookie(options):
     if not password:
         if 'password' in config():
             password = config()['password']
-        else:
-            import getpass
-            password = getpass.getpass('Input password: ')
 
-    cookie=auth(username, password)
+    cookie = auth(username, password)
     return (username, cookie)
 
 
