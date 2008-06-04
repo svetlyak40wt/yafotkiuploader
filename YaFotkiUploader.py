@@ -28,7 +28,6 @@ import logging
 import time
 import getpass
 
-from BeautifulSoup import BeautifulSoup
 from pdb import set_trace
 from xml.dom import minidom
 from StringIO import StringIO
