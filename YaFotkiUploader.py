@@ -165,13 +165,13 @@ def post_img(cookies, img, album, username):
         return err
 
     source.seek(0)
-    offset = 0
     while 1:
+        offset = source.tell()
         data = source.read(piece_size)
         if not data:
             break
 
-        logger.debug('photo-piece')
+        logger.debug('photo-piece, offset=%s' % offset)
 
         piece = StringIO(data)
 
@@ -189,8 +189,6 @@ def post_img(cookies, img, album, username):
             logger.error(err)
             logger.error(err.read())
             return err
-
-        offset += source.tell()
 
     logger.debug('photo-checksum')
 
