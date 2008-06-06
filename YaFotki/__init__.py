@@ -103,11 +103,12 @@ class Uploader(object):
         if ImageExif:
             exif = ImageExif(img)
             exif.readMetadata()
-            try: tags = ','.join(exif['Iptc.Application2.Keywords'])
+            try: tags = ','.join([tag.decode('utf8') for tag in exif['Iptc.Application2.Keywords']])
+#            try: tags = ','.join(exif['Iptc.Application2.Keywords'])
             except KeyError: pass
-            try: title = exif['Iptc.Application2.ObjectName']
+            try: title = exif['Iptc.Application2.ObjectName'].decode('utf8')
             except KeyError: pass
-            try: description = exif['Exif.Image.ImageDescription'] or exif['Iptc.Application2.Caption']
+            try: description = exif['Exif.Image.ImageDescription'].decode('utf8') or exif['Iptc.Application2.Caption'].decode('utf8')
             except KeyError: pass
 
         source = open(img, 'rb')
@@ -120,10 +121,12 @@ class Uploader(object):
         hash = md5.new(source.read()).hexdigest()
 
         logger.debug('md5hash: %s, sid: %s, file-size: %s, piece-size: %s' % (hash, sid, file_size, piece_size))
+#        set_trace()
+        logger.debug('title: %s, description: %s tags: %s' % (title, description, tags))
 
         logger.debug('photo-start')
         # START
-        fake_file = StringIO('<?xml version="1.0" encoding="utf-8"?><client-upload md5="%(md5)s" cookie="%(md5)s%(sid)s"><filename>%(filename)s</filename><title>%(title)s</title><description>%(description)s</description><albumId>%(album)s</albumId><copyright>0</copyright><tags>%(tags)s</tags></client-upload>' % {
+        fake_file = StringIO((u'<?xml version="1.0" encoding="utf-8"?><client-upload md5="%(md5)s" cookie="%(md5)s%(sid)s"><filename>%(filename)s</filename><title>%(title)s</title><description>%(description)s</description><albumId>%(album)s</albumId><copyright>0</copyright><tags>%(tags)s</tags></client-upload>' % {
             'md5': hash,
             'sid': sid,
             'filename': filename,
@@ -131,7 +134,7 @@ class Uploader(object):
             'album': album,
             'tags': tags,
             'description': description,
-        })
+        }).encode('utf8'))
 
         params = {
             'query-type': 'photo-start',
