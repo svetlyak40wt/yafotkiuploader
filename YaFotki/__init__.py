@@ -81,6 +81,7 @@ class Uploader(object):
                 id = album.attributes['id'].value
                 title = album.getElementsByTagName('title')[0].firstChild.nodeValue
                 albums.append( (id, title) )
+            albums.sort()
             return albums
 
         except urllib2.URLError, err:
@@ -104,7 +105,6 @@ class Uploader(object):
             exif = ImageExif(img)
             exif.readMetadata()
             try: tags = ','.join([tag.decode('utf8') for tag in exif['Iptc.Application2.Keywords']])
-#            try: tags = ','.join(exif['Iptc.Application2.Keywords'])
             except KeyError: pass
             try: title = exif['Iptc.Application2.ObjectName'].decode('utf8')
             except KeyError: pass
@@ -121,7 +121,6 @@ class Uploader(object):
         hash = md5.new(source.read()).hexdigest()
 
         logger.debug('md5hash: %s, sid: %s, file-size: %s, piece-size: %s' % (hash, sid, file_size, piece_size))
-#        set_trace()
         logger.debug('title: %s, description: %s tags: %s' % (title, description, tags))
 
         logger.debug('photo-start')
