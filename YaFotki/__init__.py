@@ -92,7 +92,7 @@ class Uploader(object):
         if not os.path.exists(img):
             raise FileNotFound('Can\'t find image %s on the disk' % img)
 
-        logger = logging.getLogger('YandexFotki.post')
+        logger = logging.getLogger('YaFotki.post')
         opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(self.cookies), MultipartPostHandler.MultipartPostHandler)
 
         filename = os.path.split(img)[-1]
@@ -264,7 +264,7 @@ class Uploader(object):
                 cj.clear_expired_cookies()
                 for ck in cj:
                     if ck.name == 'yandex_login' and ck.value == self.username:
-                        logging.getLogger('auth').debug('Authorized by cookie')
+                        logging.getLogger('YaFotki.auth').debug('Authorized by cookie')
                         return cj
 
         if self.password is None:
@@ -273,8 +273,9 @@ class Uploader(object):
             else:
                 raise NoPasswdOrCallback('Please, specify either password or password_callback.')
 
-        print 'authorization as %s with password %s...' % (self.username, '*'* len(self.password))
-        logging.getLogger('YaFotki.auth').debug('real password is %s' % self.password)
+        logger = logging.getLogger('YaFotki.auth')
+        logger.info('authorization as %s with password %s...' % (self.username, '*'* len(self.password)))
+        logger.debug('real password is %s' % self.password)
         data = {
                 'login': self.username,
                 'passwd': self.password,

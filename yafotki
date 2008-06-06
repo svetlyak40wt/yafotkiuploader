@@ -114,6 +114,8 @@ def main():
 
     if options.debug:
         logging.getLogger().setLevel(logging.DEBUG)
+    else:
+        logging.getLogger().setLevel(logging.INFO)
 
     yafotki = init_uploader(options)
 
