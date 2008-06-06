@@ -1,0 +1,135 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+####
+# 05/2008 Alexander Atemenko <svetlyak.40wt@gmail.com>
+#
+# Special thanks to:
+# Grigory Bakunov <bobuk@justos.org>
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, either version 3 of the License, or
+# (at your option) any later version.
+#
+# This program is distributed in the hope that it will be useful,
+# but WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+# GNU General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program.  If not, see <http://www.gnu.org/licenses/>.
+#
+
+import logging
+import getpass
+from optparse import OptionParser
+
+import YaFotki
+
+CONFIG_PATH = '~/.fotki.conf'
+COOKIES_CACHE = '~/.fotki.cookies'
+
+_conf = None
+def config(conffile=CONFIG_PATH):
+    '''Simple config loader with singleton instance'''
+    global _conf
+    if _conf:
+        return _conf
+    res = {}
+
+    conffile = os.path.expanduser(conffile)
+    if os.path.isfile(conffile):
+        for line in (x.strip() for x in open(conffile).readlines()):
+            if '=' not in line:
+                [key, value] = [line, True]
+            else:
+                [key, value] = [x.strip() for x in line.split('=')]
+            res[key] = value
+    _conf = res
+    return _conf
+
+def files_callback(option, opt_str, value, parser):
+    assert value is None
+    done = 0
+    value = []
+    rargs = parser.rargs
+    while rargs:
+        arg = rargs[0]
+
+        if ((arg[:2] == "--" and len(arg) > 2) or
+            (arg[:1] == "-" and len(arg) > 1 and arg[1] != "-")):
+            break
+        else:
+            value.append(arg)
+            del rargs[0]
+    setattr(parser.values, option.dest, value)
+
+def print_albums(albums):
+    for album in albums:
+        print '%s\t%s' % album
+
+def init_uploader(options):
+    username = options.username
+    if not username:
+        if 'username' in config():
+            username = config()['username']
+        else:
+            print 'Please, specify username'
+            sys.exit(2)
+
+    password = options.password
+    if not password:
+        if 'password' in config():
+            password = config()['password']
+
+    yafotki = YaFotki(
+            username=username,
+            password=password,
+            password_callback=lambda: getpass.getpass('Input password: ')
+            )
+
+    if yafotki.auth():
+        return yafotki
+    return None
+
+def main():
+    parser = OptionParser()
+    parser.add_option( '-d', '--debug', dest='debug', action='store_true', help='Output debug information.', default=False)
+    parser.add_option( '--version', dest='version', action='store_true', help='Show version number and quit.', default=False)
+    parser.add_option( '-u', '--user', dest='username', help='Your Yandex login.', default=None)
+    parser.add_option( '-p', '--pass', dest='password', help='Your password.', default=None)
+    parser.add_option( '--albums', action='store_true', dest='album_list', help='Show album list.', default=False)
+    parser.add_option( '-a', '--album', dest='album', type='int', help='Album to upload to.')
+    parser.add_option( '--upload', dest='files', metavar='FILE LIST', action='callback', callback=files_callback, help='File list to upload' )
+    (options, args) = parser.parse_args()
+
+    if options.version:
+        print('Python uploader for http://fotki.yandex.ru, version %s.' % YaFotki.VERSION)
+        print('For more information and new versions, visit http://svetlyak.ru.')
+        sys.exit(0)
+
+    if options.debug:
+        logging.getLogger().setLevel(logging.DEBUG)
+
+    yafotki = init_uploader(options)
+
+    albums = yafotki.get_albums()
+
+    if options.album_list:
+        print_albums(albums)
+    elif options.files:
+        if not options.album:
+            print 'Please, specify an album\'s ID'
+            print_albums(albums)
+            sys.exit(2)
+
+        for file in options.files:
+            yafotki.post(file, options.album)
+    else:
+        print 'Please, specify --upload or --albums option.'
+
+    sys.exit(0)
+
+if __name__ == "__main__":
+    main()
