@@ -87,7 +87,7 @@ def main():
     parser.add_option( '-u', '--user', dest='username', help='Your Yandex login.', default=None)
     parser.add_option( '-p', '--pass', dest='password', help='Your password.', default=None)
     parser.add_option( '--albums', action='store_true', dest='album_list', help='Show album list.', default=False)
-    parser.add_option( '-a', '--album', dest='album', type='int', help='Album to upload to.')
+    parser.add_option( '-a', '--album', dest='album', type='int', help='Album to upload to.', default=config().get('default_album', None))
     parser.add_option( '--upload', dest='upload', action='store_true', help='File list to upload (obsolete).', default=False)
     (options, args) = parser.parse_args()
 
