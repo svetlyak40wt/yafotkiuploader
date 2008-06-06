@@ -92,7 +92,8 @@ def init_uploader(options):
             cookies_cache = 'use_cookies_cache' in config() and COOKIES_CACHE,
             )
 
-    return yafotki.auth()
+    yafotki.auth()
+    return yafotki
 
 def main():
     parser = OptionParser()
@@ -113,7 +114,9 @@ def main():
     if options.debug:
         logging.getLogger().setLevel(logging.DEBUG)
     else:
-        logging.getLogger().setLevel(logging.INFO)
+        logger = logging.getLogger()
+        logger.setLevel(logging.INFO)
+        logger.handlers[0].setFormatter(logging.Formatter('%(message)s'))
 
     try:
         yafotki = init_uploader(options)
