@@ -92,9 +92,7 @@ def init_uploader(options):
             cookies_cache = 'use_cookies_cache' in config() and COOKIES_CACHE,
             )
 
-    if yafotki.auth():
-        return yafotki
-    return None
+    return yafotki.auth()
 
 def main():
     parser = OptionParser()
@@ -117,7 +115,11 @@ def main():
     else:
         logging.getLogger().setLevel(logging.INFO)
 
-    yafotki = init_uploader(options)
+    try:
+        yafotki = init_uploader(options)
+    except YaFotki.AuthError, e:
+        print e
+        sys.exit(3)
 
     albums = yafotki.get_albums()
 
@@ -138,3 +140,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

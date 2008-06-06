@@ -45,8 +45,8 @@ ALBUMS_URL= 'http://fotki.yandex.ru/users/%s/albums/'
 UPLOAD_URL = 'http://up.fotki.yandex.ru/upload'
 
 class FileNotFound(RuntimeWarning): pass
-
 class NoPasswdOrCallback(RuntimeError): pass
+class AuthError(RuntimeError): pass
 
 class Uploader(object):
     def __init__(
@@ -252,7 +252,7 @@ class Uploader(object):
                 else:
                     if self.cookies_cache and os.path.exists(self.cookies_cache):
                         os.remove(self.cookies_cache)
-        return False
+        raise AuthError('Can\'t authorize as user %s with given password!' % self.username)
 
 
     def __create_auth_opener(self):
