@@ -22,7 +22,7 @@
 #
 
 import MultipartPostHandler, urllib2, cookielib
-import os, sys, re, md5, random
+import os, sys, re, md5
 import urllib
 import logging
 import time

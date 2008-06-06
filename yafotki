@@ -21,8 +21,9 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-import logging
 import getpass
+import itertools
+import logging
 import os
 import sys
 from optparse import OptionParser
@@ -68,8 +69,8 @@ def files_callback(option, opt_str, value, parser):
     setattr(parser.values, option.dest, value)
 
 def print_albums(albums):
-    for album in albums:
-        print '%s\t%s' % album
+    for i, album in itertools.izip(xrange(1, len(albums)+1), albums):
+        print '%i) "%s"' % (i, album[1])
 
 def init_uploader(options):
     username = options.username
@@ -134,8 +135,14 @@ def main():
             print_albums(albums)
             sys.exit(2)
 
+        if options.album < 1 or options.album > len(albums):
+            print 'Wrong album number.'
+            sys.exit(4)
+
+        album = albums[options.album-1]
         for file in options.files:
-            yafotki.post(file, options.album)
+            print 'Uploading %s into album "%s"' % (file, album[1])
+            yafotki.post(file, album[0])
     else:
         print 'Please, specify --upload or --albums option.'
 
