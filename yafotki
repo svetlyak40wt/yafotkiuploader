@@ -23,6 +23,8 @@
 
 import logging
 import getpass
+import os
+import sys
 from optparse import OptionParser
 
 import YaFotki
@@ -83,7 +85,7 @@ def init_uploader(options):
         if 'password' in config():
             password = config()['password']
 
-    yafotki = YaFotki(
+    yafotki = YaFotki.Uploader(
             username=username,
             password=password,
             password_callback=lambda: getpass.getpass('Input password: ')

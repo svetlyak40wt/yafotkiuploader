@@ -46,9 +46,9 @@ UPLOAD_URL = 'http://up.fotki.yandex.ru/upload'
 
 class FileNotFound(RuntimeWarning): pass
 
-class NoPasswdOrCallback(RuntimeErorr): pass
+class NoPasswdOrCallback(RuntimeError): pass
 
-class YandexFotki(object):
+class Uploader(object):
     def __init__(self, username, password = None, password_callback = None):
         self.username = username
         self.password = password
