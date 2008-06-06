@@ -52,22 +52,6 @@ def config(conffile=CONFIG_PATH):
     _conf = res
     return _conf
 
-def files_callback(option, opt_str, value, parser):
-    assert value is None
-    done = 0
-    value = []
-    rargs = parser.rargs
-    while rargs:
-        arg = rargs[0]
-
-        if ((arg[:2] == "--" and len(arg) > 2) or
-            (arg[:1] == "-" and len(arg) > 1 and arg[1] != "-")):
-            break
-        else:
-            value.append(arg)
-            del rargs[0]
-    setattr(parser.values, option.dest, value)
-
 def print_albums(albums):
     for i, album in itertools.izip(xrange(1, len(albums)+1), albums):
         print '%i) "%s"' % (i, album[1])
@@ -104,13 +88,16 @@ def main():
     parser.add_option( '-p', '--pass', dest='password', help='Your password.', default=None)
     parser.add_option( '--albums', action='store_true', dest='album_list', help='Show album list.', default=False)
     parser.add_option( '-a', '--album', dest='album', type='int', help='Album to upload to.')
-    parser.add_option( '--upload', dest='files', metavar='FILE LIST', action='callback', callback=files_callback, help='File list to upload' )
+    parser.add_option( '--upload', dest='upload', action='store_true', help='File list to upload (obsolete).', default=False)
     (options, args) = parser.parse_args()
 
     if options.version:
         print('Python uploader for http://fotki.yandex.ru, version %s.' % YaFotki.VERSION)
         print('For more information and new versions, visit http://svetlyak.ru.')
         sys.exit(0)
+
+    if options.upload:
+        print('Please, don\'t use \'--upload\' option anymore.\nIt will be removed in the future versions.\nJust pass files list after all other options.')
 
     if options.debug:
         logging.getLogger().setLevel(logging.DEBUG)
@@ -129,7 +116,7 @@ def main():
 
     if options.album_list:
         print_albums(albums)
-    elif options.files:
+    elif args:
         if not options.album:
             print 'Please, specify an album\'s ID'
             print_albums(albums)
@@ -140,7 +127,7 @@ def main():
             sys.exit(4)
 
         album = albums[options.album-1]
-        for file in options.files:
+        for file in args:
             print 'Uploading %s into album "%s"' % (file, album[1])
             yafotki.post(file, album[0])
     else:
