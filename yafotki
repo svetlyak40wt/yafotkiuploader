@@ -88,7 +88,8 @@ def init_uploader(options):
     yafotki = YaFotki.Uploader(
             username=username,
             password=password,
-            password_callback=lambda: getpass.getpass('Input password: ')
+            password_callback=lambda: getpass.getpass('Input password: '),
+            cookies_cache = 'use_cookies_cache' in config() and COOKIES_CACHE,
             )
 
     if yafotki.auth():

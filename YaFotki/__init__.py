@@ -38,7 +38,7 @@ VERSION = '0.2.4'
 try:
     from pyexiv2 import Image as ImageExif
 except:
-    logging.getLogger('start').warning('can\'t find python-pyexiv2 library, exif extraction will be disabled.')
+    logging.getLogger('YaFotki.pre_init').warning('can\'t find python-pyexiv2 library, exif extraction will be disabled.')
     ImageExif = None
 
 ALBUMS_URL= 'http://fotki.yandex.ru/users/%s/albums/'
@@ -49,13 +49,21 @@ class FileNotFound(RuntimeWarning): pass
 class NoPasswdOrCallback(RuntimeError): pass
 
 class Uploader(object):
-    def __init__(self, username, password = None, password_callback = None):
+    def __init__(
+            self,
+            username,
+            password = None,
+            password_callback = None,
+            cookies_cache = None):
+
         self.username = username
         self.password = password
         self.password_callback = password_callback
         self.cookies = None
+        self.cookies_cache = cookies_cache and os.path.expanduser(cookies_cache)
 
     def get_albums(self):
+        logger = logging.getLogger('YaFotki.get_albums')
         opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(self.cookies), MultipartPostHandler.MultipartPostHandler)
 
         fake_file = StringIO('<?xml version="1.0" encoding="utf-8"?><client-upload name="get-albums"/>')
@@ -76,8 +84,8 @@ class Uploader(object):
             return albums
 
         except urllib2.URLError, err:
-            print err
-            pass
+            logger.error(err)
+            raise
         return []
 
     def post(self, img, album):
@@ -242,19 +250,17 @@ class Uploader(object):
                     self.cookies = cj
                     return True
                 else:
-                    cache = os.path.expanduser(COOKIES_CACHE)
-                    if os.path.exists(cache):
-                        os.remove(cache)
+                    if self.cookies_cache and os.path.exists(self.cookies_cache):
+                        os.remove(self.cookies_cache)
         return False
 
 
     def __create_auth_opener(self):
         cj = cookielib.LWPCookieJar()
         opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cj))
-        ccache = os.path.expanduser(COOKIES_CACHE)
-        if 'use_cookies_cache' in config():
-            if os.path.isfile(ccache):
-                cj.load(ccache)
+        if self.cookies_cache:
+            if os.path.isfile(self.cookies_cache):
+                cj.load(self.cookies_cache)
                 cj.clear_expired_cookies()
                 for ck in cj:
                     if ck.name == 'yandex_login' and ck.value == self.username:
@@ -276,7 +282,7 @@ class Uploader(object):
                 }
         opener.open("https://passport.yandex.ru/passport?mode=auth",
                            urllib.urlencode(data))
-        if 'use_cookies_cache' in config():
-            cj.save(ccache)
+        if self.cookies_cache:
+            cj.save(self.cookies_cache)
         return cj
 
