@@ -64,12 +64,16 @@ class YaFotkiFS(Fuse):
         return st
 
     def __get_albums(self):
-        if getattr(self, '__albums', None) is None:
+        if self.__albums is None:
             self.__albums = dict([(a[1], a[0]) for a in self.__yafotki.get_albums()])
         return self.__albums
 
     def readdir(self, path, offset):
+        path = path.decode('utf8')
         logger.debug('readdir with path=%s and offset=%s' % (path, offset))
+        if path != '/':
+            return
+
         try:
             albums = self.__get_albums()
             for a in ['.','..'] + albums.keys():
