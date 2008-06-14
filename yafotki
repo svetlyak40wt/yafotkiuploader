@@ -53,6 +53,7 @@ def config(conffile=CONFIG_PATH):
     return _conf
 
 def print_albums(albums):
+    # TODO: replace below code to the enumerate call
     for i, album in itertools.izip(xrange(1, len(albums)+1), albums):
         print '%i) "%s"' % (i, album[1])
 
