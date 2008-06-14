@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
 import logging
 logging.basicConfig(filename='yafotkifs.log', level=logging.DEBUG)
 
@@ -41,14 +43,18 @@ def init_uploader():
     return yafotki
 
 class HelloFS(Fuse):
+    def __init__(self, version, usage, dash_s_do):
+        super(HelloFS, self).__init__(version=version, usage=usage, dash_s_do=dash_s_do)
+        self.__albums = None
+        self.__yafotki = init_uploader()
 
     def getattr(self, path):
-        logging.debug('getattr for %s' % path)
+        logger.debug('getattr for %s' % path)
         st = MyStat()
         if path == '/':
             st.st_mode = stat.S_IFDIR | 0755
             st.st_nlink = 2
-        elif path == hello_path:
+        elif 1: # path == hello_path:
             st.st_mode = stat.S_IFREG | 0444
             st.st_nlink = 1
             st.st_size = len(hello_str)
@@ -56,15 +62,19 @@ class HelloFS(Fuse):
             return -errno.ENOENT
         return st
 
+    def __get_albums(self):
+        if getattr(self, '__albums', None) is None:
+            self.__albums = dict([(a[1], a[0]) for a in self.__yafotki.get_albums()])
+        return self.__albums
+
     def readdir(self, path, offset):
         logger.debug('readdir with path=%s and offset=%s' % (path, offset))
         try:
-            yafotki = init_uploader()
-            albums = yafotki.get_albums()
-            for r in  [a[1] for a in albums]:
-                logging.debug('album: %s' % r)
-                yield fuse.Direntry(r)
-            logging.debug('end')
+            albums = self.__get_albums()
+            for a in ['.','..'] + albums.keys():
+                logger.debug('album: %s' % a)
+                yield fuse.Direntry(str(a.encode('utf8')))
+            logger.debug('end')
         except Exception, e:
             logger.error(e)
 
