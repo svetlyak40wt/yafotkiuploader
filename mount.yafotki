@@ -42,9 +42,9 @@ def init_uploader():
     yafotki.auth()
     return yafotki
 
-class HelloFS(Fuse):
+class YaFotkiFS(Fuse):
     def __init__(self, version, usage, dash_s_do):
-        super(HelloFS, self).__init__(version=version, usage=usage, dash_s_do=dash_s_do)
+        super(YaFotkiFS, self).__init__(version=version, usage=usage, dash_s_do=dash_s_do)
         self.__albums = None
         self.__yafotki = init_uploader()
 
@@ -107,7 +107,7 @@ Userspace hello example
     global g_password
     g_password = getpass.getpass()
     logger.info('mount')
-    server = HelloFS(version="%prog " + fuse.__version__,
+    server = YaFotkiFS(version="%prog " + fuse.__version__,
                      usage=usage,
                      dash_s_do='setsingle')
 
