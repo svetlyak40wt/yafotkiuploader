@@ -49,15 +49,16 @@ class YaFotkiFS(Fuse):
         self.__yafotki = init_uploader()
 
     def getattr(self, path):
+        path = path.decode('utf8')
         logger.debug('getattr for %s' % path)
         st = MyStat()
         if path == '/':
             st.st_mode = stat.S_IFDIR | 0755
             st.st_nlink = 2
-        elif 1: # path == hello_path:
-            st.st_mode = stat.S_IFREG | 0444
-            st.st_nlink = 1
-            st.st_size = len(hello_str)
+        elif path[1:] in self.__get_albums():
+            logger.debug('%s is album' % path)
+            st.st_mode = stat.S_IFDIR | 0755
+            st.st_nlink = 2
         else:
             return -errno.ENOENT
         return st
