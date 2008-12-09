@@ -24,16 +24,37 @@
 import MultipartPostHandler, urllib2, cookielib
 import os, sys, re, md5
 import urllib
+import feedparser
 import logging
 import time
+from ElementBuilder import Element as E, Namespace
+
 
 from pdb import set_trace
 from xml.dom import minidom
+from xml.etree import ElementTree as ET
 from StringIO import StringIO
+
+try:
+    register_namespace = ET.register_namespace
+except AttributeError:
+    def register_namespace(prefix, uri):
+        ET._namespace_map[uri] = prefix
+
+atom = Namespace('http://www.w3.org/2005/Atom', '')
+namespaces = {
+    'atom':      'http://www.w3.org/2005/Atom',
+    'app':   'http://www.w3.org/2007/app',
+    'xhtml': 'http://www.w3.org/1999/xhtml',
+    'f':     'yandex:fotki',
+}
+
+for prefix, uri in namespaces.iteritems():
+    register_namespace(prefix, uri)
 
 logging.basicConfig(level=logging.WARNING)
 
-VERSION = '0.2.5'
+VERSION = '0.3.0-pre'
 
 try:
     from pyexiv2 import Image as ImageExif
@@ -43,6 +64,16 @@ except:
 
 ALBUMS_URL= 'http://fotki.yandex.ru/users/%s/albums/'
 UPLOAD_URL = 'http://up.fotki.yandex.ru/upload'
+API_URL = 'http://fimp.transvaal.yandex.ru'
+
+def encrypt(text, key, b64encode=True):
+    import os,  subprocess
+    cmd = ['yamrsa-encrypt']
+    if not b64encode:
+        cmd.append('--no-b64encode')
+    cmd.extend([str(key), text])
+    p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+    return p.stdout.read()
 
 class FileNotFound(RuntimeWarning): pass
 class NoPasswdOrCallback(RuntimeError): pass
@@ -61,8 +92,9 @@ class Uploader(object):
         self.password_callback = password_callback
         self.cookies = None
         self.cookies_cache = cookies_cache and os.path.expanduser(cookies_cache)
+        self.token = None
 
-    def get_albums(self):
+    def get_albums_old(self):
         logger = logging.getLogger('YaFotki.get_albums')
         opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(self.cookies), MultipartPostHandler.MultipartPostHandler)
 
@@ -288,4 +320,87 @@ class Uploader(object):
         if self.cookies_cache:
             cj.save(self.cookies_cache)
         return cj
+
+    def get_new_token(self):
+        opener = self._create_opener()
+        xml = opener.get('/fimp-key/')
+
+        key = xml.find('key')
+        request_id = xml.find('request_id')
+
+        if key is None or request_id is None:
+            raise Exception('Can\'t get public key.')
+
+        credentials = '<credentials login="%s" password="%s"/>' % (self.username, self.password)
+        credentials = encrypt(credentials, key.text)
+        xml = opener.post('/fimp-token/', dict(
+                            credentials = credentials,
+                            request_id = request_id.text))
+        token = xml.find('token')
+        if token is None:
+            raise Exception('Can\'t get token.')
+
+        return token.text
+
+    def _create_opener(self):
+        url_pattern = API_URL + '%s'
+        cookies = self.cookies
+        token = self.token
+        class Opener(object):
+            def __init__(self):
+                self.opener = urllib2.build_opener(
+                    urllib2.HTTPCookieProcessor(cookies),
+                    MultipartPostHandler.MultipartPostHandler)
+
+            def get(self, url):
+                url = url_pattern % url
+                return ET.fromstring(self.opener.open(url).read())
+
+            def get_atom(self, url):
+                url = url_pattern % url
+                return feedparser.parse(self.opener.open(url))
+
+            def _post(self, url, data, parser):
+                url = url_pattern % url
+                headers = {
+                    'Authorization': 'FimpToken realm="fotki.yandex.ru", token="%s"' % token,
+                    'Content-Type': 'application/atom+xml; type=entry',
+
+                }
+                print url, data, headers
+                if isinstance(data, dict):
+                    data = urllib.urlencode(data)
+                req = urllib2.Request(url, data, headers)
+                try:
+                    data = urllib2.urlopen(req).read()
+                except urllib2.HTTPError, e:
+                    if e.code >= 200 and e.code < 300:
+                        data = e.read()
+                    else:
+                        raise
+
+                return parser(data)
+
+            def post(self, url, data = {}):
+                return self._post(url, data, ET.fromstring)
+
+            def post_atom(self, url, data = {}):
+                return self._post(url, data, feedparser.parse)
+
+        return Opener()
+
+    def get_albums(self):
+        self.token = self.get_new_token()
+        opener = self._create_opener()
+        feed = opener.get_atom('/api/users/%s/albums/' % self.username)
+        return [(index, entry['title']) for index, entry in enumerate(feed['entries'])]
+
+    def create_album(self, title, summary = ''):
+        xml = ET.tostring(
+                atom.entry(
+                    atom.title(title.decode('utf-8')),
+                    atom.summary(summary.decode('utf-8'))))
+
+        opener = self._create_opener()
+        print opener.post_atom('/api/users/%s/albums/' % self.username, xml)
 

@@ -89,6 +89,8 @@ def main():
     parser.add_option( '--albums', action='store_true', dest='album_list', help='Show album list.', default=False)
     parser.add_option( '-a', '--album', dest='album', type='int', help='Album to upload to.', default=config().get('default_album', None))
     parser.add_option( '--upload', dest='upload', action='store_true', help='File list to upload (obsolete).', default=False)
+    parser.add_option( '--get-token', dest='get_token', action='store_true', help='Try to get auth token.', default=False)
+    parser.add_option( '--create-album', dest='create_album', help='Create album with this title.', default=None)
     (options, args) = parser.parse_args()
 
     if options.version:
@@ -112,9 +114,16 @@ def main():
         print e
         sys.exit(3)
 
+    if options.get_token:
+        logger.debug('getting auth token')
+        print('New token %r' % yafotki.get_new_token())
+        sys.exit(0)
+
     albums = yafotki.get_albums()
 
-    if options.album_list:
+    if options.create_album:
+        yafotki.create_album(options.create_album)
+    elif options.album_list:
         print_albums(albums)
     elif args:
         if not options.album:
