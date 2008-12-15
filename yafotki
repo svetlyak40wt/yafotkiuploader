@@ -27,6 +27,7 @@ import logging
 import os
 import sys
 from YaFotkiLib.required import OptionParser, Option
+from optparse import OptionGroup, IndentedHelpFormatter, SUPPRESS_USAGE
 from functools import wraps
 
 from pdb import set_trace
@@ -154,59 +155,92 @@ class Uploader(object):
         user.create_album(command_opts.title, command_opts.summary)
         self._print_albums(user.albums)
 
+class MyHelpFormatter(IndentedHelpFormatter):
+    def __init__(self, heading):
+        self.heading = heading
+        IndentedHelpFormatter.__init__(self)
+
+    def format_heading(self, heading):
+        return '%*s%s:\n' % (self.current_indent, "", self.heading)
+
 def main():
     config = Config()
 
-    global_parser = OptionParser()
-    global_parser.add_option( '-v', '--verbose', dest='verbose', action='store_true', help='Output more information.', default=False)
-    global_parser.add_option( '--version', dest='version', action='store_true', help='Show version number and quit.', default=False)
-    global_parser.add_option( '--token', dest='token', help='Auth token.', default=None)
+    global_parser = OptionParser(
+        usage = 'usage: %prog [global options] command [command options] [args]',
+        option_list = [
+            Option('-h', '--help', dest='help', action='store_true',
+                    help='Print help and exit.', default=False),
+            Option('-v', '--verbose', dest='verbose', action='store_true',
+                    help='Output more information.', default=False),
+            Option('--version', dest='version', action='store_true',
+                    help='Show version number and quit.', default=False),
+            Option('--token', dest='token', help='Auth token.', default=None),
+        ],
+        add_help_option = False,
+        formatter = MyHelpFormatter('Global options')
+    )
 
     empty_parser = OptionParser()
 
-    auth_parser = OptionParser(option_list = [
-        Option('-u', '--user', dest='username',
-               help='Your login.'),
-        Option('-p', '--pass', dest='password',
-               help='Your password.')
-    ])
+    auth_parser = OptionParser(
+        option_list = [
+            Option('-u', '--user', dest='username',
+                   help='Your login.'),
+            Option('-p', '--pass', dest='password',
+                   help='Your password.')
+        ],
+        usage = SUPPRESS_USAGE,
+        add_help_option = False,
+        formatter = MyHelpFormatter("Command 'auth'")
+    )
 
-    create_album_parser = OptionParser(option_list = [
-        Option('-t', '--title', dest='title',
-               help='Album\'s title.', required = True),
-        Option('-s', '--summary', dest='summary',
-               help='Short description.')
-    ])
+    create_album_parser = OptionParser(
+        option_list = [
+            Option('-t', '--title', dest='title',
+                   help='Album\'s title.', required = True),
+            Option('-s', '--summary', dest='summary',
+                   help='Short description.')
+        ],
+        usage = SUPPRESS_USAGE,
+        add_help_option = False,
+        formatter = MyHelpFormatter("Command 'create-album'")
+    )
 
-    upload_parser = OptionParser(option_list = [
-        Option('-a', '--album', type='int', dest='album',
-               help='Album\'s number.', required=True),
-        Option('-t', '--title', dest='title',
-               help='Image\'s title (by default it will be extracted from exif).'),
-        Option('-k', '--tags', dest='tags',
-               help='Comma separated tags/keywords (by default it will be extracted from exif).'),
-        Option('-d', '--description', dest='description',
-               help='Short description (by default it will be extracted from exif).'),
-        Option('--access', dest='access_type',
-               help='String value, one from the following list: ['
-                    '"public", "friends", "private"] (default %default).',
-               default=config.access_type),
-        Option('--no-comments', dest='disable_comments',
-               help='Disable comments, "yes" or "no" (default %default)).',
-               default=config.disable_comments),
-        Option('-x', '--xxx', dest='xxx',
-               help='Content for adults only, "yes" or "no" (default %default)).',
-               default=config.xxx),
-        Option('--hide-original', dest='hide_original',
-               help='Hide original image from other users, "yes" or "no" (default %default)).',
-               default=config.hide_original),
-        Option('--storage-private', dest='storage_private',
-               help='Disable image downloadig from other sources, "yes" or "no" (default %default)).',
-               default=config.storage_private),
-        Option('-y', '--to-yaru', dest='yaru',
-               help='Publish on i.ya.ru, "yes" or "no" (default %default)).',
-               default=config.yaru),
-    ])
+    upload_parser = OptionParser(
+        option_list = [
+            Option('-a', '--album', type='int', dest='album',
+                   help='Album\'s number.', required=True),
+            Option('-t', '--title', dest='title',
+                   help='Image\'s title (by default it will be extracted from exif).'),
+            Option('-k', '--tags', dest='tags',
+                   help='Comma separated tags/keywords (by default it will be extracted from exif).'),
+            Option('-d', '--description', dest='description',
+                   help='Short description (by default it will be extracted from exif).'),
+            Option('--access', dest='access_type',
+                   help='String value, one from the following list: ['
+                        '"public", "friends", "private"] (default %default).',
+                   default=config.access_type),
+            Option('--no-comments', dest='disable_comments',
+                   help='Disable comments, "yes" or "no" (default %default)).',
+                   default=config.disable_comments),
+            Option('-x', '--xxx', dest='xxx',
+                   help='Content for adults only, "yes" or "no" (default %default)).',
+                   default=config.xxx),
+            Option('--hide-original', dest='hide_original',
+                   help='Hide original image from other users, "yes" or "no" (default %default)).',
+                   default=config.hide_original),
+            Option('--storage-private', dest='storage_private',
+                   help='Disable image downloadig from other sources, "yes" or "no" (default %default)).',
+                   default=config.storage_private),
+            Option('-y', '--to-yaru', dest='yaru',
+                   help='Publish on i.ya.ru, "yes" or "no" (default %default)).',
+                   default=config.yaru),
+        ],
+        add_help_option = False,
+        usage = SUPPRESS_USAGE,
+        formatter = MyHelpFormatter("Command 'upload'")
+    )
 
     uploader = Uploader()
 
@@ -218,6 +252,13 @@ def main():
     }
     args = sys.argv
 
+    def print_help():
+        global_parser.print_help()
+        for command, (parser, func) in commands.items():
+            if parser != empty_parser:
+                print '\n'
+                parser.print_help()
+
     for command, (parser, callback) in commands.items():
         if command in args:
             idx = args.index(command)
@@ -225,7 +266,8 @@ def main():
             cmd_opts, cmd_args = parser.parse_args(args[idx+1:])
             break
     else:
-        raise Exception('Unsupported command')
+        print_help()
+        sys.exit(1)
 
     if glob_opts.verbose:
         logging.basicConfig(level = logging.DEBUG, format = '%(message)s')
