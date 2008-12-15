@@ -28,6 +28,7 @@ import feedparser
 import logging
 import time
 from ElementBuilder import Element as E, Namespace
+from datetime import datetime
 
 
 from pdb import set_trace
@@ -52,19 +53,42 @@ namespaces = {
 for prefix, uri in namespaces.iteritems():
     register_namespace(prefix, uri)
 
-logging.basicConfig(level=logging.WARNING)
-
-VERSION = '0.3.0-pre'
+VERSION = (0, 3, 0, 'pre')
+if len(VERSION) == 3:
+    __version__ = '%d.%d.%d' % VERSION
+elif len(VERSION) == 4:
+    __version__ = '%d.%d.%d-%s' % VERSION
+else:
+    __version__ = '.'.join(str(v) for v in VERSION)
 
 try:
     from pyexiv2 import Image as ImageExif
 except:
-    logging.getLogger('YaFotki.pre_init').warning('can\'t find python-pyexiv2 library, exif extraction will be disabled.')
+    logging.warning('can\'t find python-pyexiv2 library, exif extraction will be disabled.')
     ImageExif = None
 
-ALBUMS_URL= 'http://fotki.yandex.ru/users/%s/albums/'
 UPLOAD_URL = 'http://up.fotki.yandex.ru/upload'
 API_URL = 'http://fimp.transvaal.yandex.ru'
+
+class ACCESS:
+    PUBLIC  = 1
+    FRIENDS = 2
+    PRIVATE = 3
+
+    _str = {
+        PUBLIC: 'public',
+        FRIENDS: 'friends',
+        PRIVATE: 'private',
+    }
+    _val = dict(map(reversed, _str.items()))
+
+    @staticmethod
+    def tostring(v):
+        return ACCESS._str[v]
+
+    @staticmethod
+    def fromstring(v):
+        return ACCESS._val[v]
 
 def encrypt(text, key, b64encode=True):
     import os,  subprocess
@@ -79,251 +103,109 @@ class FileNotFound(RuntimeWarning): pass
 class NoPasswdOrCallback(RuntimeError): pass
 class AuthError(RuntimeError): pass
 
-class Uploader(object):
-    def __init__(
-            self,
-            username,
-            password = None,
-            password_callback = None,
-            cookies_cache = None):
-
+class User(object):
+    def __init__(self, api, username):
+        self.api = api
         self.username = username
-        self.password = password
-        self.password_callback = password_callback
-        self.cookies = None
-        self.cookies_cache = cookies_cache and os.path.expanduser(cookies_cache)
+        self._albums = None
+
+    def _get_albums(self):
+        if self._albums is None:
+            self._albums = self.api.get_albums(self.username)
+        return self._albums
+    albums = property(_get_albums)
+
+    def create_album(self, title, summary = ''):
+        self.albums.append(
+            self.api.create_album(self.username,
+                                  title, summary))
+
+class Album(object):
+    '''Album with some photos.'''
+    def __init__(self, api, entry):
+        self.api = api
+        for key, value in entry.iteritems():
+            if key.endswith('_parsed'):
+                key = key[:-7]
+                value = datetime(*value[:6])
+            if key == 'links':
+                value = dict((link['rel'], link) for link in value)
+            if getattr(self, key, None) is None:
+                setattr(self, key, value)
+
+    def __repr__(self):
+        return repr(self.__dict__)
+
+    def upload(self,
+               photos,
+               title = None,
+               tags = None,
+               description = None,
+               access_type = ACCESS.PUBLIC,
+               disable_comments = False,
+               xxx = False,
+               hide_orig = False,
+               storage_private = False,
+               yaru = True):
+
+        album_id = self.id.split(':')[-1]
+        for photo in photos:
+            self.api.upload(album_id, photo, title, tags,
+                description, access_type, disable_comments,
+                xxx, hide_orig, storage_private, yaru)
+
+
+class Api(object):
+    def _build_absolute_url(self, url):
+        return url.startswith('http') and url or (API_URL + url)
+
+    def __init__(self):
         self.token = None
+        self.opener = urllib2.build_opener(
+            urllib2.HTTPCookieProcessor(),
+            MultipartPostHandler.MultipartPostHandler)
 
-    def get_albums_old(self):
-        logger = logging.getLogger('YaFotki.get_albums')
-        opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(self.cookies), MultipartPostHandler.MultipartPostHandler)
+    def _get(self, url, parser = ET.fromstring):
+        url = self._build_absolute_url(url)
+        return parser(self.opener.open(url).read())
 
-        fake_file = StringIO('<?xml version="1.0" encoding="utf-8"?><client-upload name="get-albums"/>')
+    def _get_atom(self, url):
+        return self._get(url, feedparser.parse)
 
-        params = {
-            'query-type' : 'photo-command',
-            'command-xml' : fake_file
+    def _post(self, url, data,
+              content_type = 'application/atom+xml; type=entry',
+              extra_headers = {},
+              parser = ET.fromstring):
+
+        url = self._build_absolute_url(url)
+        headers = {
+            'Authorization': 'FimpToken realm="fotki.yandex.ru", token="%s"' % self.token,
+            'Content-Type': content_type,
         }
+        headers.update(extra_headers)
 
+        logging.debug('Posting to %r: %r %r' % (url, data, headers))
+        req = urllib2.Request(url, data, headers)
         try:
-            data = opener.open(UPLOAD_URL, params).read()
-            xml = minidom.parseString(data)
-            albums = []
-            for album in xml.getElementsByTagName('album'):
-                id = album.attributes['id'].value
-                title = album.getElementsByTagName('title')[0].firstChild.nodeValue
-                albums.append( (id, title) )
-            albums.sort()
-            return albums
-
-        except urllib2.URLError, err:
-            logger.error(err)
-            raise
-        return []
-
-    def post(self, img, album):
-        if not os.path.exists(img):
-            raise FileNotFound('Can\'t find image %s on the disk' % img)
-
-        logger = logging.getLogger('YaFotki.post')
-        opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(self.cookies), MultipartPostHandler.MultipartPostHandler)
-
-        filename = os.path.split(img)[-1]
-        tags = ''
-        title = filename
-        description = ''
-
-        if ImageExif:
-            exif = ImageExif(img)
-            exif.readMetadata()
-            try: tags = ','.join([tag.decode('utf8') for tag in exif['Iptc.Application2.Keywords']])
-            except KeyError: pass
-            try: title = exif['Iptc.Application2.ObjectName'].decode('utf8')
-            except KeyError: pass
-            try: description = exif['Exif.Image.ImageDescription'].decode('utf8') or exif['Iptc.Application2.Caption'].decode('utf8')
-            except KeyError: pass
-
-        source = open(img, 'rb')
-        source.seek(0, 2)
-        file_size = source.tell()
-        piece_size = 64000
-
-        sid = str(int(time.time()))
-        source.seek(0)
-        hash = md5.new(source.read()).hexdigest()
-
-        logger.debug('md5hash: %s, sid: %s, file-size: %s, piece-size: %s' % (hash, sid, file_size, piece_size))
-        logger.debug('title: %s, description: %s tags: %s' % (title, description, tags))
-
-        logger.debug('photo-start')
-        # START
-        fake_file = StringIO((u'<?xml version="1.0" encoding="utf-8"?><client-upload md5="%(md5)s" cookie="%(md5)s%(sid)s"><filename>%(filename)s</filename><title>%(title)s</title><description>%(description)s</description><albumId>%(album)s</albumId><copyright>0</copyright><tags>%(tags)s</tags></client-upload>' % {
-            'md5': hash,
-            'sid': sid,
-            'filename': filename,
-            'title': title,
-            'album': album,
-            'tags': tags,
-            'description': description,
-        }).encode('utf8'))
-
-        params = {
-            'query-type': 'photo-start',
-            'file-size': str(file_size),
-            'piece-size': str(piece_size),
-            'checksum': hash,
-            'client-xml': fake_file,
-        }
-
-        try:
-            data = opener.open(UPLOAD_URL, params).read()
-            logger.debug(data)
-            response = minidom.parseString(data).firstChild
-            a = response.attributes
-            if a['status'].value == 'error':
-                if a['exception'].value == '3':
-                    logger.error('Album with id %s does not exist.' % album)
-                else:
-                    logger.error('Error during upload, with code %s' % a['exception'].value)
-                sys.exit(1)
-            upload_cookie = str(a['cookie'].value)
-        except urllib2.URLError, err:
-            logger.error(err)
-            logger.error(err.read())
-            return err
-
-        source.seek(0)
-        while 1:
-            offset = source.tell()
-            data = source.read(piece_size)
-            if not data:
-                break
-
-            logger.debug('photo-piece, offset=%s' % offset)
-
-            piece = StringIO(data)
-
-            params = {
-                'query-type': 'photo-piece',
-                'cookie': upload_cookie,
-                'offset': str(offset),
-                'fragment': piece,
-            }
-
-            try:
-                data = opener.open(UPLOAD_URL, params).read()
-                logger.debug(data)
-            except urllib2.URLError, err:
-                logger.error(err)
-                logger.error(err.read())
-                return err
-
-        logger.debug('photo-checksum')
-
-        params = {
-            'query-type': 'photo-checksum',
-            'cookie': upload_cookie,
-            'size': str(piece_size),
-        }
-
-        try:
-            data = opener.open(UPLOAD_URL, params).read()
-            logger.debug(data)
-        except urllib2.URLError, err:
-            logger.error(err)
-            logger.error(err.read())
-
-            logger.debug('check-upload')
-            fake_file = StringIO('<?xml version="1.0" encoding="utf-8"?><client-upload name="check-upload" cookie="%(md5)s%(sid)s" login="%(login)s"></client-upload>' % {
-                'md5': hash,
-                'sid': sid,
-                'login': self.username,
-            })
-
-            params = {
-                'query-type': 'photo-command',
-                'command-xml': fake_file,
-            }
-            try:
-                data = opener.open(UPLOAD_URL, params).read()
-                logger.debug(data)
-                response = minidom.parseString(data).firstChild
-                if response.nodeName != 'images':
-                    logger.error('error upload check: %s' % data)
-                    sys.exit(1)
-            except urllib2.URLError, err:
-                logger.error(err)
-                logger.error(err.read())
-                return err
-
-        logger.debug('photo-finish')
-
-        params = {
-            'query-type': 'photo-finish',
-            'cookie': upload_cookie,
-        }
-
-        try:
-            data = opener.open(UPLOAD_URL, params).read()
-            logger.debug(data)
-
-            response = minidom.parseString(data).firstChild
-            if response.attributes['status'].value == 'error':
-                logger.error('error during upload, with code %s' % response.attributes['exception'].value)
-        except urllib2.URLError, err:
-            logger.error(err)
-            logger.error(err.read())
-
-    def auth(self):
-        logger = logging.getLogger('YaFotki.auth')
-        cj = self.__create_auth_opener()
-        for cookie in cj:
-            if cookie.name == "yandex_login":
-                if cookie.value == self.username:
-                    logger.debug(cj)
-                    self.cookies = cj
-                    return True
-                else:
-                    if self.cookies_cache and os.path.exists(self.cookies_cache):
-                        os.remove(self.cookies_cache)
-        raise AuthError('Can\'t authorize as user %s with given password!' % self.username)
-
-
-    def __create_auth_opener(self):
-        cj = cookielib.LWPCookieJar()
-        opener = urllib2.build_opener(urllib2.HTTPCookieProcessor(cj))
-        if self.cookies_cache:
-            if os.path.isfile(self.cookies_cache):
-                cj.load(self.cookies_cache)
-                cj.clear_expired_cookies()
-                for ck in cj:
-                    if ck.name == 'yandex_login' and ck.value == self.username:
-                        logging.getLogger('YaFotki.auth').debug('Authorized by cookie')
-                        return cj
-
-        if self.password is None:
-            if self.password_callback is not None:
-                self.password = self.password_callback()
+            data = self.opener.open(req).read()
+        except urllib2.HTTPError, e:
+            if e.code >= 200 and e.code < 300:
+                data = e.read()
             else:
-                raise NoPasswdOrCallback('Please, specify either password or password_callback.')
+                logging.error('HTTPError, data: %r' % e.read())
+                raise
 
-        logger = logging.getLogger('YaFotki.auth')
-        logger.info('authorization as %s with password %s...' % (self.username, '*'* len(self.password)))
-        logger.debug('real password is %s' % self.password)
-        data = {
-                'login': self.username,
-                'passwd': self.password,
-                'twoweeks':'yes'
-                }
-        opener.open("https://passport.yandex.ru/passport?mode=auth",
-                           urllib.urlencode(data))
-        if self.cookies_cache:
-            cj.save(self.cookies_cache)
-        return cj
+        return parser(data)
 
-    def get_new_token(self):
-        opener = self._create_opener()
-        xml = opener.get('/fimp-key/')
+    def _post_atom(self, url, data = {},
+                   content_type = 'application/atom+xml; type=entry',
+                   extra_headers = {}):
+        return self._post(url, data, content_type, extra_headers, feedparser.parse)
+
+    def auth(self, username, password):
+        self.username, self.password = username, password
+
+        xml = self._get('/fimp-key/')
 
         key = xml.find('key')
         request_id = xml.find('request_id')
@@ -333,74 +215,102 @@ class Uploader(object):
 
         credentials = '<credentials login="%s" password="%s"/>' % (self.username, self.password)
         credentials = encrypt(credentials, key.text)
-        xml = opener.post('/fimp-token/', dict(
+        xml = self._post('/fimp-token/', dict(
                             credentials = credentials,
                             request_id = request_id.text))
         token = xml.find('token')
         if token is None:
             raise Exception('Can\'t get token.')
 
-        return token.text
+        self.token = token.text
+        return self.token
 
-    def _create_opener(self):
-        url_pattern = API_URL + '%s'
-        cookies = self.cookies
-        token = self.token
-        class Opener(object):
-            def __init__(self):
-                self.opener = urllib2.build_opener(
-                    urllib2.HTTPCookieProcessor(cookies),
-                    MultipartPostHandler.MultipartPostHandler)
+    def find_user(self, username):
+        return User(self, username)
 
-            def get(self, url):
-                url = url_pattern % url
-                return ET.fromstring(self.opener.open(url).read())
+    def get_albums(self, username):
+        albums = []
+        url = '/api/users/%s/albums/rpublished/' % username
 
-            def get_atom(self, url):
-                url = url_pattern % url
-                return feedparser.parse(self.opener.open(url))
+        while url is not None:
+            feed = self._get_atom(url)
+            albums.extend(Album(self, entry) for entry in feed['entries'])
+            url = None
+            for link in feed['feed'].links:
+                if link['rel'] == 'next':
+                    url = link['href']
 
-            def _post(self, url, data, parser):
-                url = url_pattern % url
-                headers = {
-                    'Authorization': 'FimpToken realm="fotki.yandex.ru", token="%s"' % token,
-                    'Content-Type': 'application/atom+xml; type=entry',
+        return albums
 
-                }
-                print url, data, headers
-                if isinstance(data, dict):
-                    data = urllib.urlencode(data)
-                req = urllib2.Request(url, data, headers)
-                try:
-                    data = urllib2.urlopen(req).read()
-                except urllib2.HTTPError, e:
-                    if e.code >= 200 and e.code < 300:
-                        data = e.read()
-                    else:
-                        raise
-
-                return parser(data)
-
-            def post(self, url, data = {}):
-                return self._post(url, data, ET.fromstring)
-
-            def post_atom(self, url, data = {}):
-                return self._post(url, data, feedparser.parse)
-
-        return Opener()
-
-    def get_albums(self):
-        self.token = self.get_new_token()
-        opener = self._create_opener()
-        feed = opener.get_atom('/api/users/%s/albums/' % self.username)
-        return [(index, entry['title']) for index, entry in enumerate(feed['entries'])]
-
-    def create_album(self, title, summary = ''):
+    def create_album(self, username, title, summary = ''):
+        title = title or 'Default'
+        summary = summary or ''
         xml = ET.tostring(
                 atom.entry(
                     atom.title(title.decode('utf-8')),
                     atom.summary(summary.decode('utf-8'))))
 
-        opener = self._create_opener()
-        print opener.post_atom('/api/users/%s/albums/' % self.username, xml)
+        feed = self._post_atom('/api/users/%s/albums/' % username, xml)
+        return Album(self, feed['entries'][0])
+
+    def upload(self, album_id, filename,
+               title = None, tags = None,
+               description = None,
+               access_type = ACCESS.PUBLIC,
+               disable_comments = False,
+               xxx = False,
+               hide_orig = False,
+               storage_private = False,
+               yaru = True,
+               ):
+        logging.debug('Uploading %r to album with id %r' % (filename, album_id))
+
+        tags = tags or u''
+        title = title or os.path.basename(filename)
+        description = description or u''
+
+        if ImageExif:
+            exif = ImageExif(filename)
+            try:
+                exif.readMetadata()
+                try: tags = tags or ','.join([tag.decode('utf8') \
+                                for tag in exif['Iptc.Application2.Keywords']])
+                except KeyError: pass
+                try: title = title or exif['Iptc.Application2.ObjectName'].decode('utf8')
+                except KeyError: pass
+                try: description = description or \
+                        exif['Iptc.Application2.Caption'].decode('utf8')
+                except KeyError: pass
+                try: description = description or \
+                        exif['Exif.Image.ImageDescription'].decode('utf8')
+                except KeyError: pass
+            except IOError:
+                pass
+
+        def to_bool(value, yes = 'true', no = 'false'):
+            if value in [True, 'yes', 1, 'true']:
+                return yes
+            return no
+
+        data = dict(
+            image = open(filename, 'rb'),
+            title = title.encode('utf8'),
+            tags = tags.encode('utf8'),
+            description = description.encode('utf8'),
+            access_type = ACCESS.tostring(access_type),
+            album = str(album_id),
+            disable_comments = to_bool(disable_comments),
+            xxx = to_bool(xxx),
+            hide_orig = to_bool(hide_orig),
+            storage_private = to_bool(storage_private),
+            yaru = to_bool(yaru, '1', '0'),
+            pub_channel = 'Python API',
+            app_platform = sys.platform,
+            app_version = __version__,
+        )
+
+        print 'Photo: %r' % (self._post('/fimp/post/', data,
+            extra_headers = dict(
+                Slug = os.path.basename(filename)),
+            parser = lambda x: x))
 

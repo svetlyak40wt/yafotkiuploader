@@ -26,124 +26,224 @@ import itertools
 import logging
 import os
 import sys
-from optparse import OptionParser
+from YaFotkiLib.required import OptionParser, Option
+from functools import wraps
 
-import YaFotkiLib
+from pdb import set_trace
 
-CONFIG_PATH = '~/.fotki.conf'
-COOKIES_CACHE = '~/.fotki.cookies'
+import YaFotkiLib as yafotki
 
-_conf = None
-def config(conffile=CONFIG_PATH):
+CONFIG_PATH = os.path.expanduser('~/.fotki.conf')
+TOKEN_CACHE = os.path.expanduser('~/.fotki.token')
+
+class Config(object):
     '''Simple config loader with singleton instance'''
-    global _conf
-    if _conf:
-        return _conf
-    res = {}
+    _shared = {
+        '_loaded': False,
+        'access_type': 'public',
+        'disable_comments': 'no',
+        'xxx': 'no',
+        'hide_original': 'no',
+        'storage_private': 'no',
+        'yaru': 'yes',
+    }
 
-    conffile = os.path.expanduser(conffile)
-    if os.path.isfile(conffile):
-        for line in (x.strip() for x in open(conffile).readlines()):
-            if '=' not in line:
-                [key, value] = [line, True]
-            else:
-                [key, value] = [x.strip() for x in line.split('=')]
-            res[key] = value
-    _conf = res
-    return _conf
+    def __init__(self):
+        self.__dict__ = self._shared
+        if not self._loaded:
+            if os.path.exists(CONFIG_PATH):
+                cfg = open(CONFIG_PATH)
+                for line in (x.strip() for x in cfg.readlines()):
+                    if '=' not in line:
+                        [key, value] = [line, True]
+                    else:
+                        [key, value] = [x.strip() for x in line.split('=')]
+                    setattr(self, key, value)
+                cfg.close()
+                self._loaded = True
 
-def print_albums(albums):
-    for i, album in itertools.izip(xrange(1, len(albums)+1), albums):
-        print '%i) "%s"' % (i, album[1])
+    def update(self, opts):
+        for key in dir(opts):
+            if not key.startswith('_'):
+                value = getattr(opts, key)
+                if not hasattr(value, '__call__') and value:
+                    setattr(self, key, value)
 
-def init_uploader(options):
-    username = options.username
-    if not username:
-        if 'username' in config():
-            username = config()['username']
-        else:
-            print 'Please, specify username'
-            sys.exit(2)
+    def __getattr__(self, name):
+        return None
 
-    password = options.password
-    if not password:
-        if 'password' in config():
-            password = config()['password']
+    def __repr__(self):
+        return repr(self.__dict__)
 
-    yafotki = YaFotkiLib.Uploader(
-            username=username,
-            password=password,
-            password_callback=lambda: getpass.getpass('Input password: '),
-            cookies_cache = 'use_cookies_cache' in config() and COOKIES_CACHE,
+def auth_required(func):
+    @wraps(func)
+    def wrap(self, *args, **kwargs):
+        if not self.api.token:
+            logging.error('Please use "auth" command to authorize on the service.')
+            sys.exit(1)
+        return func(self, *args, **kwargs)
+    return wrap
+
+
+class Uploader(object):
+    def __init__(self):
+        self.config = Config()
+
+        self.api = yafotki.Api()
+
+        if os.path.exists(TOKEN_CACHE):
+            f = open(TOKEN_CACHE)
+            self.api.token = f.readline()
+            f.close()
+
+    def auth(self, global_opts, global_args,
+                  command_opts, command_args):
+        logging.debug('getting new authentication token')
+
+        if self.config.username is None:
+            logging.error('Please supply username via '
+                          '--username option or in the config.')
+            sys.exit(0)
+
+        password = self.config.password or \
+                   getpass.getpass('Input password: ')
+
+        self.api.auth(self.config.username, password)
+        f = open(TOKEN_CACHE, 'w+')
+        f.write(self.api.token)
+        f.close()
+        print 'New token was written to %r' % TOKEN_CACHE
+
+    @auth_required
+    def upload(self, global_opts, global_args,
+               command_opts, command_args):
+        try:
+            user = self.api.find_user(self.config.username)
+            user.albums[command_opts.album - 1].upload(
+                command_args,
+                title = self.config.title,
+                tags = self.config.tags,
+                description = self.config.description,
+                access_type = yafotki.ACCESS.fromstring(self.config.access_type),
+                disable_comments = self.config.disable_comments,
+                xxx = self.config.xxx,
+                hide_orig = self.config.hide_original,
+                storage_private = self.config.storage_private,
+                yaru = self.config.yaru,
             )
+        except IndexError:
+            logging.error('Wrong album number.')
+            sys.exit(1)
 
-    yafotki.auth()
-    return yafotki
+    def get_albums(self, global_opts, global_args,
+                   command_opts, command_args):
+        user = self.api.find_user(self.config.username)
+        self._print_albums(user.albums)
+
+    def _print_albums(self, albums):
+        for i, album in enumerate(albums):
+            if self.config.verbose:
+                print '%i) "%r"' % (i+1, album)
+            else:
+                print '%i) "%s"' % (i+1, album.title)
+
+    @auth_required
+    def create_album(self, global_opts, global_args,
+                     command_opts, command_args):
+        user = self.api.find_user(self.config.username)
+        user.create_album(command_opts.title, command_opts.summary)
+        self._print_albums(user.albums)
 
 def main():
-    parser = OptionParser()
-    parser.add_option( '-d', '--debug', dest='debug', action='store_true', help='Output debug information.', default=False)
-    parser.add_option( '--version', dest='version', action='store_true', help='Show version number and quit.', default=False)
-    parser.add_option( '-u', '--user', dest='username', help='Your Yandex login.', default=None)
-    parser.add_option( '-p', '--pass', dest='password', help='Your password.', default=None)
-    parser.add_option( '--albums', action='store_true', dest='album_list', help='Show album list.', default=False)
-    parser.add_option( '-a', '--album', dest='album', type='int', help='Album to upload to.', default=config().get('default_album', None))
-    parser.add_option( '--upload', dest='upload', action='store_true', help='File list to upload (obsolete).', default=False)
-    parser.add_option( '--get-token', dest='get_token', action='store_true', help='Try to get auth token.', default=False)
-    parser.add_option( '--create-album', dest='create_album', help='Create album with this title.', default=None)
-    (options, args) = parser.parse_args()
+    config = Config()
 
-    if options.version:
-        print('Python uploader for http://fotki.yandex.ru, version %s.' % YaFotkiLib.VERSION)
-        print('For more information and new versions, visit http://svetlyak.ru.')
+    global_parser = OptionParser()
+    global_parser.add_option( '-v', '--verbose', dest='verbose', action='store_true', help='Output more information.', default=False)
+    global_parser.add_option( '--version', dest='version', action='store_true', help='Show version number and quit.', default=False)
+    global_parser.add_option( '--token', dest='token', help='Auth token.', default=None)
+
+    empty_parser = OptionParser()
+
+    auth_parser = OptionParser(option_list = [
+        Option('-u', '--user', dest='username',
+               help='Your login.'),
+        Option('-p', '--pass', dest='password',
+               help='Your password.')
+    ])
+
+    create_album_parser = OptionParser(option_list = [
+        Option('-t', '--title', dest='title',
+               help='Album\'s title.', required = True),
+        Option('-s', '--summary', dest='summary',
+               help='Short description.')
+    ])
+
+    upload_parser = OptionParser(option_list = [
+        Option('-a', '--album', type='int', dest='album',
+               help='Album\'s number.', required=True),
+        Option('-t', '--title', dest='title',
+               help='Image\'s title (by default it will be extracted from exif).'),
+        Option('-k', '--tags', dest='tags',
+               help='Comma separated tags/keywords (by default it will be extracted from exif).'),
+        Option('-d', '--description', dest='description',
+               help='Short description (by default it will be extracted from exif).'),
+        Option('--access', dest='access_type',
+               help='String value, one from the following list: ['
+                    '"public", "friends", "private"] (default %default).',
+               default=config.access_type),
+        Option('--no-comments', dest='disable_comments',
+               help='Disable comments, "yes" or "no" (default %default)).',
+               default=config.disable_comments),
+        Option('-x', '--xxx', dest='xxx',
+               help='Content for adults only, "yes" or "no" (default %default)).',
+               default=config.xxx),
+        Option('--hide-original', dest='hide_original',
+               help='Hide original image from other users, "yes" or "no" (default %default)).',
+               default=config.hide_original),
+        Option('--storage-private', dest='storage_private',
+               help='Disable image downloadig from other sources, "yes" or "no" (default %default)).',
+               default=config.storage_private),
+        Option('-y', '--to-yaru', dest='yaru',
+               help='Publish on i.ya.ru, "yes" or "no" (default %default)).',
+               default=config.yaru),
+    ])
+
+    uploader = Uploader()
+
+    commands = {
+        'albums': (empty_parser, uploader.get_albums),
+        'auth': (auth_parser, uploader.auth),
+        'upload': (upload_parser, uploader.upload),
+        'create-album': (create_album_parser, uploader.create_album),
+    }
+    args = sys.argv
+
+    for command, (parser, callback) in commands.items():
+        if command in args:
+            idx = args.index(command)
+            glob_opts, glob_args = global_parser.parse_args(args[:idx])
+            cmd_opts, cmd_args = parser.parse_args(args[idx+1:])
+            break
+    else:
+        raise Exception('Unsupported command')
+
+    if glob_opts.verbose:
+        logging.basicConfig(level = logging.DEBUG, format = '%(message)s')
+    else:
+        logging.basicConfig(level = logging.WARNING, format = '%(message)s')
+
+    if glob_opts.version:
+        logging.error('Python uploader for http://fotki.yandex.ru, version %s.' % yafotki.VERSION)
+        logging.error('For more information and new versions, visit http://svetlyak.ru.')
         sys.exit(0)
 
-    if options.upload:
-        print('Please, don\'t use \'--upload\' option anymore.\nIt will be removed in the future versions.\nJust pass files list after all other options.')
+    config.update(glob_opts)
+    config.update(cmd_opts)
+    logging.debug('Config values %r' % config)
 
-    if options.debug:
-        logging.getLogger().setLevel(logging.DEBUG)
-    else:
-        logger = logging.getLogger()
-        logger.setLevel(logging.INFO)
-        logger.handlers[0].setFormatter(logging.Formatter('%(message)s'))
-
-    try:
-        yafotki = init_uploader(options)
-    except YaFotkiLib.AuthError, e:
-        print e
-        sys.exit(3)
-
-    if options.get_token:
-        logger.debug('getting auth token')
-        print('New token %r' % yafotki.get_new_token())
-        sys.exit(0)
-
-    albums = yafotki.get_albums()
-
-    if options.create_album:
-        yafotki.create_album(options.create_album)
-    elif options.album_list:
-        print_albums(albums)
-    elif args:
-        if not options.album:
-            print 'Please, specify an album\'s ID'
-            print_albums(albums)
-            sys.exit(2)
-
-        if options.album < 1 or options.album > len(albums):
-            print 'Wrong album number.'
-            sys.exit(4)
-
-        album = albums[options.album-1]
-        for file in args:
-            print 'Uploading %s into album "%s"' % (file, album[1])
-            yafotki.post(file, album[0])
-    else:
-        print 'Please, specify --upload or --albums option.'
-
-    sys.exit(0)
+    callback(glob_opts, glob_args, cmd_opts, cmd_args)
 
 if __name__ == "__main__":
     main()
+    sys.exit(0)
 
