@@ -153,7 +153,12 @@ class Uploader(object):
                      command_opts, command_args):
         user = self.api.find_user(self.config.username)
         user.create_album(command_opts.title, command_opts.summary)
-        self._print_albums(user.albums)
+
+    @auth_required
+    def delete_album(self, global_opts, global_args,
+                     command_opts, command_args):
+        user = self.api.find_user(self.config.username)
+        user.albums[command_opts.album - 1].delete()
 
 class MyHelpFormatter(IndentedHelpFormatter):
     def __init__(self, heading):
@@ -207,6 +212,16 @@ def main():
         formatter = MyHelpFormatter("Command 'create-album'")
     )
 
+    delete_album_parser = OptionParser(
+        option_list = [
+            Option('-a', '--album', dest='album', type='int',
+                   help='Album\'s number.', required = True),
+        ],
+        usage = SUPPRESS_USAGE,
+        add_help_option = False,
+        formatter = MyHelpFormatter("Command 'delete-album'")
+    )
+
     upload_parser = OptionParser(
         option_list = [
             Option('-a', '--album', type='int', dest='album',
@@ -244,22 +259,22 @@ def main():
 
     uploader = Uploader()
 
-    commands = {
-        'albums': (empty_parser, uploader.get_albums),
-        'auth': (auth_parser, uploader.auth),
-        'upload': (upload_parser, uploader.upload),
-        'create-album': (create_album_parser, uploader.create_album),
-    }
+    commands = [
+        ('albums', empty_parser, uploader.get_albums),
+        ('auth', auth_parser, uploader.auth),
+        ('upload', upload_parser, uploader.upload),
+        ('create-album', create_album_parser, uploader.create_album),
+        ('delete-album', delete_album_parser, uploader.delete_album),
+    ]
     args = sys.argv
 
     def print_help():
         global_parser.print_help()
-        for command, (parser, func) in commands.items():
+        for command, parser, func in commands:
             if parser != empty_parser:
-                print '\n'
                 parser.print_help()
 
-    for command, (parser, callback) in commands.items():
+    for command, parser, callback in commands:
         if command in args:
             idx = args.index(command)
             glob_opts, glob_args = global_parser.parse_args(args[:idx])

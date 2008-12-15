@@ -103,6 +103,13 @@ class FileNotFound(RuntimeWarning): pass
 class NoPasswdOrCallback(RuntimeError): pass
 class AuthError(RuntimeError): pass
 
+class DeleteRequest(urllib2.Request):
+    def get_method(self):
+        return 'DELETE'
+class PutRequest(urllib2.Request):
+    def get_method(self):
+        return 'PUT'
+
 class User(object):
     def __init__(self, api, username):
         self.api = api
@@ -154,6 +161,9 @@ class Album(object):
                 description, access_type, disable_comments,
                 xxx, hide_orig, storage_private, yaru)
 
+    def delete(self):
+        self.api.delete_album(self.links['self']['href'])
+
 
 class Api(object):
     def _build_absolute_url(self, url):
@@ -175,7 +185,8 @@ class Api(object):
     def _post(self, url, data,
               content_type = 'application/atom+xml; type=entry',
               extra_headers = {},
-              parser = ET.fromstring):
+              parser = ET.fromstring,
+              request_cls = urllib2.Request):
 
         url = self._build_absolute_url(url)
         headers = {
@@ -185,7 +196,7 @@ class Api(object):
         headers.update(extra_headers)
 
         logging.debug('Posting to %r: %r %r' % (url, data, headers))
-        req = urllib2.Request(url, data, headers)
+        req = request_cls(url, data, headers)
         try:
             data = self.opener.open(req).read()
         except urllib2.HTTPError, e:
@@ -199,8 +210,16 @@ class Api(object):
 
     def _post_atom(self, url, data = {},
                    content_type = 'application/atom+xml; type=entry',
-                   extra_headers = {}):
-        return self._post(url, data, content_type, extra_headers, feedparser.parse)
+                   extra_headers = {},
+                   request_cls = urllib2.Request):
+        return self._post(url, data,
+                content_type = content_type,
+                extra_headers = extra_headers,
+                parser = feedparser.parse,
+                request_cls = request_cls)
+
+    def delete_album(self, url):
+        return self._post_atom(url, request_cls = DeleteRequest)
 
     def auth(self, username, password):
         self.username, self.password = username, password
