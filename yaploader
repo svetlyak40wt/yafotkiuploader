@@ -26,13 +26,13 @@ import itertools
 import logging
 import os
 import sys
-from YaFotkiLib.required import OptionParser, Option
+from yafotki.required import OptionParser, Option
 from optparse import OptionGroup, IndentedHelpFormatter, SUPPRESS_USAGE
 from functools import wraps
 
 from pdb import set_trace
 
-import YaFotkiLib as yafotki
+import yafotki
 
 CONFIG_PATH = os.path.expanduser('~/.fotki.conf')
 TOKEN_CACHE = os.path.expanduser('~/.fotki.token')
