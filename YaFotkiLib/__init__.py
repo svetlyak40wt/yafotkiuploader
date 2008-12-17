@@ -27,31 +27,24 @@ import urllib
 import feedparser
 import logging
 import time
-from ElementBuilder import Element as E, Namespace
 from datetime import datetime
 
 
 from pdb import set_trace
 from xml.dom import minidom
-from xml.etree import ElementTree as ET
+from lxml import etree as ET
+from lxml.builder import ElementMaker
 from StringIO import StringIO
 
-try:
-    register_namespace = ET.register_namespace
-except AttributeError:
-    def register_namespace(prefix, uri):
-        ET._namespace_map[uri] = prefix
-
-atom = Namespace('http://www.w3.org/2005/Atom', '')
+_ATOM = 'http://www.w3.org/2005/Atom'
+_ATOM_NS = '{%s}' % _ATOM
+atom = ElementMaker(namespace = _ATOM)
 namespaces = {
-    'atom':      'http://www.w3.org/2005/Atom',
+    'atom':  _ATOM,
     'app':   'http://www.w3.org/2007/app',
     'xhtml': 'http://www.w3.org/1999/xhtml',
     'f':     'yandex:fotki',
 }
-
-for prefix, uri in namespaces.iteritems():
-    register_namespace(prefix, uri)
 
 VERSION = (0, 3, 0, 'pre')
 if len(VERSION) == 3:
@@ -112,25 +105,28 @@ class PutRequest(urllib2.Request):
 
 class User(object):
     def __init__(self, api, username):
-        self.api = api
+        self._api = api
         self.username = username
         self._albums = None
 
     def _get_albums(self):
         if self._albums is None:
-            self._albums = self.api.get_albums(self.username)
+            self._albums = self._api.get_albums(self.username)
         return self._albums
     albums = property(_get_albums)
 
     def create_album(self, title, summary = ''):
         self.albums.append(
-            self.api.create_album(self.username,
+            self._api.create_album(self.username,
                                   title, summary))
 
 class Album(object):
     '''Album with some photos.'''
-    def __init__(self, api, entry):
-        self.api = api
+    def __init__(self, api, entry, original_entry):
+        self._api = api
+        self._entry = entry
+        self._original_entry = original_entry
+
         for key, value in entry.iteritems():
             if key.endswith('_parsed'):
                 key = key[:-7]
@@ -157,12 +153,25 @@ class Album(object):
 
         album_id = self.id.split(':')[-1]
         for photo in photos:
-            self.api.upload(album_id, photo, title, tags,
+            self._api.upload(album_id, photo, title, tags,
                 description, access_type, disable_comments,
                 xxx, hide_orig, storage_private, yaru)
 
     def delete(self):
-        self.api.delete_album(self.links['self']['href'])
+        self._api.delete_album(self.links['self']['href'])
+
+    def save(self):
+        orig = self._original_entry
+        orig.find(_ATOM_NS + 'title').text = self.title
+        return self._api._post_atom(self.links['self']['href'],
+                    data = ET.tostring(orig),
+                    request_cls = PutRequest)
+
+
+def _extract_original_entry(orig, entry):
+    entries = orig.xpath('atom:entry[atom:id = $id]',
+        id = entry.id, namespaces = namespaces)
+    return (len(entries) == 1) and entries[0] or None
 
 
 class Api(object):
@@ -177,7 +186,8 @@ class Api(object):
 
     def _get(self, url, parser = ET.fromstring):
         url = self._build_absolute_url(url)
-        return parser(self.opener.open(url).read())
+        original = self.opener.open(url).read()
+        return parser(original), original
 
     def _get_atom(self, url):
         return self._get(url, feedparser.parse)
@@ -224,7 +234,7 @@ class Api(object):
     def auth(self, username, password):
         self.username, self.password = username, password
 
-        xml = self._get('/fimp-key/')
+        xml, original_xml = self._get('/fimp-key/')
 
         key = xml.find('key')
         request_id = xml.find('request_id')
@@ -252,8 +262,13 @@ class Api(object):
         url = '/api/users/%s/albums/rpublished/' % username
 
         while url is not None:
-            feed = self._get_atom(url)
-            albums.extend(Album(self, entry) for entry in feed['entries'])
+            feed, original_feed = self._get_atom(url)
+            original_feed = ET.fromstring(original_feed)
+            albums.extend(
+                Album(self,
+                      entry,
+                      original_entry = _extract_original_entry(original_feed, entry)
+                ) for entry in feed['entries'])
             url = None
             for link in feed['feed'].links:
                 if link['rel'] == 'next':
@@ -269,8 +284,10 @@ class Api(object):
                     atom.title(title.decode('utf-8')),
                     atom.summary(summary.decode('utf-8'))))
 
-        feed = self._post_atom('/api/users/%s/albums/' % username, xml)
-        return Album(self, feed['entries'][0])
+        feed, original_feed = self._post_atom('/api/users/%s/albums/' % username, xml)
+        original_feed = ET.fromstring(original_feed)
+        original_entry = _extract_original_entry(original_feed, entry)
+        return Album(self, feed['entries'][0], original_entry)
 
     def upload(self, album_id, filename,
                title = None, tags = None,

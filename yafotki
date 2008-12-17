@@ -160,6 +160,16 @@ class Uploader(object):
         user = self.api.find_user(self.config.username)
         user.albums[command_opts.album - 1].delete()
 
+    @auth_required
+    def modify_album(self, global_opts, global_args,
+                     command_opts, command_args):
+        user = self.api.find_user(self.config.username)
+        album = user.albums[command_opts.album - 1]
+        for attr in ['title', 'description']:
+            if hasattr(command_opts, attr):
+                setattr(album, attr, getattr(command_opts, attr).decode('UTF8'))
+        album.save()
+
 class MyHelpFormatter(IndentedHelpFormatter):
     def __init__(self, heading):
         self.heading = heading
@@ -222,6 +232,20 @@ def main():
         formatter = MyHelpFormatter("Command 'delete-album'")
     )
 
+    modify_album_parser = OptionParser(
+        option_list = [
+            Option('-a', '--album', dest='album', type='int',
+                   help='Album\'s number.', required = True),
+            Option('-t', '--title', dest='title',
+                   help='Album\'s title.'),
+            Option('-s', '--summary', dest='summary',
+                   help='Short description.')
+        ],
+        usage = SUPPRESS_USAGE,
+        add_help_option = False,
+        formatter = MyHelpFormatter("Command 'modify-album'")
+    )
+
     upload_parser = OptionParser(
         option_list = [
             Option('-a', '--album', type='int', dest='album',
@@ -265,6 +289,7 @@ def main():
         ('upload', upload_parser, uploader.upload),
         ('create-album', create_album_parser, uploader.create_album),
         ('delete-album', delete_album_parser, uploader.delete_album),
+        ('modify-album', modify_album_parser, uploader.modify_album),
     ]
     args = sys.argv
 
