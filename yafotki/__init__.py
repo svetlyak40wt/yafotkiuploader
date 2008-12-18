@@ -159,10 +159,12 @@ class AtomEntry(object):
     def __repr__(self):
         return repr(self.__dict__)
 
+    def delete(self):
+        self._api.delete_object(self.links['self']['href'])
+
 
 class Photo(AtomEntry):
     '''One photo.'''
-
 
 class Album(AtomEntry):
     '''Album with some photos.'''
@@ -187,9 +189,6 @@ class Album(AtomEntry):
             self._api.upload(album_id, photo, title, tags,
                 description, access_type, disable_comments,
                 xxx, hide_orig, storage_private, yaru)
-
-    def delete(self):
-        self._api.delete_album(self.links['self']['href'])
 
     def save(self):
         orig = self._original_entry
@@ -267,7 +266,7 @@ class Api(object):
                 parser = feedparser.parse,
                 request_cls = request_cls)
 
-    def delete_album(self, url):
+    def delete_object(self, url):
         return self._post_atom(url, request_cls = DeleteRequest)
 
     def auth(self, username, password):

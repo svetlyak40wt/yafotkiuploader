@@ -175,6 +175,13 @@ class Uploader(object):
         user.albums[command_opts.album - 1].delete()
 
     @auth_required
+    def delete_photo(self, global_opts, global_args,
+                     command_opts, command_args):
+        user = self.api.find_user(self.config.username)
+        album = user.albums[command_opts.album - 1]
+        album.photos[command_opts.photo - 1].delete()
+
+    @auth_required
     def modify_album(self, global_opts, global_args,
                      command_opts, command_args):
         user = self.api.find_user(self.config.username)
@@ -246,6 +253,18 @@ def main():
         formatter = MyHelpFormatter("Command 'delete-album'")
     )
 
+    delete_photo_parser = OptionParser(
+        option_list = [
+            Option('-a', '--album', dest='album', type='int',
+                   help='Album\'s number.', required = True),
+            Option('-p', '--photo', dest='photo', type='int',
+                   help='Photo\'s number.', required = True),
+        ],
+        usage = SUPPRESS_USAGE,
+        add_help_option = False,
+        formatter = MyHelpFormatter("Command 'delete-photo'")
+    )
+
     photos_parser = OptionParser(
         option_list = [
             Option('-a', '--album', dest='album', type='int',
@@ -315,6 +334,7 @@ def main():
         ('delete-album', delete_album_parser, uploader.delete_album),
         ('modify-album', modify_album_parser, uploader.modify_album),
         ('photos', photos_parser, uploader.get_photos),
+        ('delete-photo', delete_photo_parser, uploader.delete_photo),
     ]
     args = sys.argv
 
