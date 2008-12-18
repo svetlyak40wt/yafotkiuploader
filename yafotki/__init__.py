@@ -127,11 +127,11 @@ class User(object):
         self.username = username
         self._albums = None
 
-    def _get_albums(self):
+    @property
+    def albums(self):
         if self._albums is None:
             self._albums = self._api.get_albums(self.username)
         return self._albums
-    albums = property(_get_albums)
 
     def create_album(self, title, summary = ''):
         self.albums.append(
@@ -328,16 +328,19 @@ class Api(object):
     def find_user(self, username):
         return User(self, username)
 
-    def get_albums(self, username):
-        # TODO merge this method with get_photos
-        albums = []
-        url = '/api/users/%s/albums/rpublished/' % username
+    def _get_object_list(self, url, cls):
+        '''Fetching objects from atom feeds.
+           This method accepts URL and object's class.
+           Class contructors must receive Atom Entry object and original
+           entry, parsed by ElementTree.
+        '''
+        objects = []
 
         while url is not None:
             feed, original_feed = self._get_atom(url)
             original_feed = ET.fromstring(original_feed)
-            albums.extend(
-                Album(self,
+            objects.extend(
+                cls(self,
                       entry,
                       original_entry = _extract_original_entry(original_feed, entry)
                 ) for entry in feed['entries'])
@@ -346,25 +349,14 @@ class Api(object):
                 if link['rel'] == 'next':
                     url = link['href']
 
-        return albums
+        return objects
+
+    def get_albums(self, username):
+        url = '/api/users/%s/albums/rpublished/' % username
+        return self._get_object_list(url, Album)
 
     def get_photos(self, url):
-        photos = []
-
-        while url is not None:
-            feed, original_feed = self._get_atom(url)
-            original_feed = ET.fromstring(original_feed)
-            photos.extend(
-                Photo(self,
-                      entry,
-                      original_entry = _extract_original_entry(original_feed, entry)
-                ) for entry in feed['entries'])
-            url = None
-            for link in feed['feed'].links:
-                if link['rel'] == 'next':
-                    url = link['href']
-
-        return photos
+        return self._get_object_list(url, Photo)
 
     def create_album(self, username, title, summary = ''):
         title = title or 'Default'
