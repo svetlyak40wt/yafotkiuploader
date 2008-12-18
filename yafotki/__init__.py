@@ -46,6 +46,24 @@ namespaces = {
     'f':     'yandex:fotki',
 }
 
+if feedparser._XML_AVAILABLE:
+    class _FeedParserMixin(feedparser._FeedParserMixin):
+        def _start_f_image_count(self, attrsD):
+            context = self._getContext()
+            context['image_count'] = int(attrsD['value'])
+    setattr(_FeedParserMixin, '_start_f_image-count', _FeedParserMixin._start_f_image_count)
+
+    class _StrictFeedParser(_FeedParserMixin, feedparser._StrictFeedParser):
+        def __init__(self, baseuri, baselang, encoding):
+            import xml.sax
+            if feedparser._debug: sys.stderr.write('trying StrictFeedParser\n')
+            xml.sax.handler.ContentHandler.__init__(self)
+            _FeedParserMixin.__init__(self, baseuri, baselang, encoding)
+            self.bozo = 0
+            self.exc = None
+
+    feedparser._StrictFeedParser = _StrictFeedParser
+
 VERSION = (0, 3, 0, 'pre')
 if len(VERSION) == 3:
     __version__ = '%d.%d.%d' % VERSION
@@ -120,8 +138,10 @@ class User(object):
             self._api.create_album(self.username,
                                   title, summary))
 
-class Album(object):
-    '''Album with some photos.'''
+class AtomEntry(object):
+    '''Base object for all atom entries.
+       It holds all attributes and builds link map.'''
+
     def __init__(self, api, entry, original_entry):
         self._api = api
         self._entry = entry
@@ -138,6 +158,17 @@ class Album(object):
 
     def __repr__(self):
         return repr(self.__dict__)
+
+
+class Photo(AtomEntry):
+    '''One photo.'''
+
+
+class Album(AtomEntry):
+    '''Album with some photos.'''
+    def __init__(self, *args, **kwargs):
+        self._photos = None
+        super(Album, self).__init__(*args, **kwargs)
 
     def upload(self,
                photos,
@@ -167,11 +198,18 @@ class Album(object):
                     data = ET.tostring(orig),
                     request_cls = PutRequest)
 
+    @property
+    def photos(self):
+        if self._photos is None:
+            self._photos = self._api.get_photos(self.links['photos']['href'])
+        return self._photos
 
 def _extract_original_entry(orig, entry):
     entries = orig.xpath('atom:entry[atom:id = $id]',
         id = entry.id, namespaces = namespaces)
-    return (len(entries) == 1) and entries[0] or None
+    if len(entries) == 1:
+        return entries[0]
+    return None
 
 
 class Api(object):
@@ -186,6 +224,7 @@ class Api(object):
 
     def _get(self, url, parser = ET.fromstring):
         url = self._build_absolute_url(url)
+        logging.debug('GET from %r' % url)
         original = self.opener.open(url).read()
         return parser(original), original
 
@@ -205,8 +244,8 @@ class Api(object):
         }
         headers.update(extra_headers)
 
-        logging.debug('Posting to %r: %r %r' % (url, data, headers))
         req = request_cls(url, data, headers)
+        logging.debug('%s to %r: %r %r' % (req.get_method(), url, data, headers))
         try:
             data = self.opener.open(req).read()
         except urllib2.HTTPError, e:
@@ -275,6 +314,24 @@ class Api(object):
                     url = link['href']
 
         return albums
+
+    def get_photos(self, url):
+        photos = []
+
+        while url is not None:
+            feed, original_feed = self._get_atom(url)
+            original_feed = ET.fromstring(original_feed)
+            photos.extend(
+                Photo(self,
+                      entry,
+                      original_entry = _extract_original_entry(original_feed, entry)
+                ) for entry in feed['entries'])
+            url = None
+            for link in feed['feed'].links:
+                if link['rel'] == 'next':
+                    url = link['href']
+
+        return photos
 
     def create_album(self, username, title, summary = ''):
         title = title or 'Default'

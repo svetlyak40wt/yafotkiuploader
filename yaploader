@@ -141,12 +141,26 @@ class Uploader(object):
         user = self.api.find_user(self.config.username)
         self._print_albums(user.albums)
 
+    def get_photos(self, global_opts, global_args,
+                   command_opts, command_args):
+        user = self.api.find_user(self.config.username)
+        album = user.albums[command_opts.album - 1]
+        print 'Album "%s"' % album.title
+        for i, photo in enumerate(album.photos):
+            print '%i) "%s"' % (i+1, photo.title)
+
     def _print_albums(self, albums):
         for i, album in enumerate(albums):
-            if self.config.verbose:
-                print '%i) "%r"' % (i+1, album)
+            if album.image_count:
+                image_count = '%d image(s)' % album.image_count
             else:
-                print '%i) "%s"' % (i+1, album.title)
+                image_count = 'empty'
+
+            if self.config.verbose:
+                print '%i) "%s", real id "%s", %s' % \
+                    (i+1, album.title, album.id, image_count)
+            else:
+                print '%i) "%s", %s' % (i+1, album.title, image_count)
 
     @auth_required
     def create_album(self, global_opts, global_args,
@@ -232,6 +246,16 @@ def main():
         formatter = MyHelpFormatter("Command 'delete-album'")
     )
 
+    photos_parser = OptionParser(
+        option_list = [
+            Option('-a', '--album', dest='album', type='int',
+                   help='Album\'s number.', required = True),
+        ],
+        usage = SUPPRESS_USAGE,
+        add_help_option = False,
+        formatter = MyHelpFormatter("Command 'photos'")
+    )
+
     modify_album_parser = OptionParser(
         option_list = [
             Option('-a', '--album', dest='album', type='int',
@@ -290,6 +314,7 @@ def main():
         ('create-album', create_album_parser, uploader.create_album),
         ('delete-album', delete_album_parser, uploader.delete_album),
         ('modify-album', modify_album_parser, uploader.modify_album),
+        ('photos', photos_parser, uploader.get_photos),
     ]
     args = sys.argv
 
