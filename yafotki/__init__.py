@@ -141,6 +141,7 @@ class User(object):
 class AtomEntry(object):
     '''Base object for all atom entries.
        It holds all attributes and builds link map.'''
+    fields = () # overwrite this to make these fields storable
 
     def __init__(self, api, entry, original_entry):
         self._api = api
@@ -159,15 +160,35 @@ class AtomEntry(object):
     def __repr__(self):
         return repr(self.__dict__)
 
+    def save(self):
+        orig = self._original_entry
+        for field in self.fields:
+            value = getattr(self, field, None)
+            if value is not None:
+                e_name = _ATOM_NS + field
+                element = orig.find(e_name)
+                if element is None:
+                    element = ET.SubElement(orig, e_name)
+                element.text = value
+
+        return self._api._post_atom(self.links['edit']['href'],
+                    data = ET.tostring(orig),
+                    request_cls = PutRequest)
+
     def delete(self):
-        self._api.delete_object(self.links['self']['href'])
+        self._api.delete_object(self.links['edit']['href'])
 
 
 class Photo(AtomEntry):
     '''One photo.'''
+    fields = ('title', 'tags', 'access', 'disable_comments',
+              'xxx', 'hide_original', 'storage_private', 'yaru')
+
 
 class Album(AtomEntry):
     '''Album with some photos.'''
+    fields = ('title', 'summary')
+
     def __init__(self, *args, **kwargs):
         self._photos = None
         super(Album, self).__init__(*args, **kwargs)
@@ -189,21 +210,6 @@ class Album(AtomEntry):
             self._api.upload(album_id, photo, title, tags,
                 description, access_type, disable_comments,
                 xxx, hide_orig, storage_private, yaru)
-
-    def save(self):
-        orig = self._original_entry
-        for field in ('title', 'summary'):
-            value = getattr(self, field, None)
-            if value is not None:
-                e_name = _ATOM_NS + field
-                element = orig.find(e_name)
-                if element is None:
-                    element = ET.SubElement(orig, e_name)
-                element.text = value
-
-        return self._api._post_atom(self.links['self']['href'],
-                    data = ET.tostring(orig),
-                    request_cls = PutRequest)
 
     @property
     def photos(self):

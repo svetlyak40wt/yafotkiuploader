@@ -186,10 +186,22 @@ class Uploader(object):
                      command_opts, command_args):
         user = self.api.find_user(self.config.username)
         album = user.albums[command_opts.album - 1]
-        for attr in ['title', 'summary']:
-            if hasattr(command_opts, attr):
-                setattr(album, attr, getattr(command_opts, attr).decode('UTF8'))
-        album.save()
+        self._save_object(album, command_opts)
+
+    @auth_required
+    def modify_photo(self, global_opts, global_args,
+                     command_opts, command_args):
+        user = self.api.find_user(self.config.username)
+        album = user.albums[command_opts.album - 1]
+        photo = album.photos[command_opts.photo - 1]
+        self._save_object(photo, command_opts)
+
+    def _save_object(self, obj, update_from):
+        for field in obj.fields:
+            value = getattr(update_from, field, None)
+            if value is not None:
+                setattr(obj, field, value.decode('UTF8'))
+        obj.save()
 
 class MyHelpFormatter(IndentedHelpFormatter):
     def __init__(self, heading):
@@ -289,39 +301,54 @@ def main():
         formatter = MyHelpFormatter("Command 'modify-album'")
     )
 
+    photo_options = [
+        Option('-t', '--title', dest='title',
+               help='Image\'s title (by default it will be extracted from exif).'),
+        Option('-k', '--tags', dest='tags',
+               help='Comma separated tags/keywords (by default it will be extracted from exif).'),
+        Option('-d', '--description', dest='description',
+               help='Short description (by default it will be extracted from exif).'),
+        Option('--access', dest='access_type',
+               help='String value, one from the following list: ['
+                    '"public", "friends", "private"] (default %default).',
+               default=config.access_type),
+        Option('--no-comments', dest='disable_comments',
+               help='Disable comments, "yes" or "no" (default %default)).',
+               default=config.disable_comments),
+        Option('-x', '--xxx', dest='xxx',
+               help='Content for adults only, "yes" or "no" (default %default)).',
+               default=config.xxx),
+        Option('--hide-original', dest='hide_original',
+               help='Hide original image from other users, "yes" or "no" (default %default)).',
+               default=config.hide_original),
+        Option('--storage-private', dest='storage_private',
+               help='Disable image downloadig from other sources, "yes" or "no" (default %default)).',
+               default=config.storage_private),
+        Option('-y', '--to-yaru', dest='yaru',
+               help='Publish on i.ya.ru, "yes" or "no" (default %default)).',
+               default=config.yaru),
+    ]
+
     upload_parser = OptionParser(
         option_list = [
             Option('-a', '--album', type='int', dest='album',
                    help='Album\'s number.', required=True),
-            Option('-t', '--title', dest='title',
-                   help='Image\'s title (by default it will be extracted from exif).'),
-            Option('-k', '--tags', dest='tags',
-                   help='Comma separated tags/keywords (by default it will be extracted from exif).'),
-            Option('-d', '--description', dest='description',
-                   help='Short description (by default it will be extracted from exif).'),
-            Option('--access', dest='access_type',
-                   help='String value, one from the following list: ['
-                        '"public", "friends", "private"] (default %default).',
-                   default=config.access_type),
-            Option('--no-comments', dest='disable_comments',
-                   help='Disable comments, "yes" or "no" (default %default)).',
-                   default=config.disable_comments),
-            Option('-x', '--xxx', dest='xxx',
-                   help='Content for adults only, "yes" or "no" (default %default)).',
-                   default=config.xxx),
-            Option('--hide-original', dest='hide_original',
-                   help='Hide original image from other users, "yes" or "no" (default %default)).',
-                   default=config.hide_original),
-            Option('--storage-private', dest='storage_private',
-                   help='Disable image downloadig from other sources, "yes" or "no" (default %default)).',
-                   default=config.storage_private),
-            Option('-y', '--to-yaru', dest='yaru',
-                   help='Publish on i.ya.ru, "yes" or "no" (default %default)).',
-                   default=config.yaru),
-        ],
+        ] + photo_options,
         add_help_option = False,
         usage = SUPPRESS_USAGE,
         formatter = MyHelpFormatter("Command 'upload'")
+    )
+
+    modify_photo_parser = OptionParser(
+        option_list = [
+            Option('-a', '--album', dest='album', type='int',
+                   help='Album\'s number.', required = True),
+            Option('-p', '--photo', dest='photo', type='int',
+                   help='Photo\'s number.', required = True),
+        ] + photo_options,
+        usage = SUPPRESS_USAGE,
+        add_help_option = False,
+        formatter = MyHelpFormatter("Command 'modify-album'")
     )
 
     uploader = Uploader()
@@ -335,6 +362,7 @@ def main():
         ('modify-album', modify_album_parser, uploader.modify_album),
         ('photos', photos_parser, uploader.get_photos),
         ('delete-photo', delete_photo_parser, uploader.delete_photo),
+        ('modify-photo', modify_photo_parser, uploader.modify_photo),
     ]
     args = sys.argv
 
