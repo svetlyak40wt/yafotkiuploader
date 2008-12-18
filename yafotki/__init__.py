@@ -125,19 +125,17 @@ class User(object):
     def __init__(self, api, username):
         self._api = api
         self.username = username
-        self._albums = None
 
     @property
     def albums(self):
-        if self._albums is None:
-            self._albums = self._api.get_albums(self.username)
-        return self._albums
+        '''Returns iterator to user's albums.'''
+        return self._api.get_albums(self.username)
 
     @property
     def photos(self):
+        '''Returns iterator to all user's photos.'''
         url = '/api/users/%s/photos/' % self.username
         return self._api.get_photos(url)
-
 
     def create_album(self, title, summary = ''):
         self.albums.append(
@@ -207,10 +205,6 @@ class Album(AtomEntry):
     '''Album with some photos.'''
     fields = ('title', 'summary')
 
-    def __init__(self, *args, **kwargs):
-        self._photos = None
-        super(Album, self).__init__(*args, **kwargs)
-
     def upload(self,
                photos,
                title = None,
@@ -231,9 +225,9 @@ class Album(AtomEntry):
 
     @property
     def photos(self):
-        if self._photos is None:
-            self._photos = self._api.get_photos(self.links['photos']['href'])
-        return self._photos
+        '''Returns iterator to all photos in this album.'''
+        return self._api.get_photos(self.links['photos']['href'])
+
 
 def _extract_original_entry(orig, entry):
     entries = orig.xpath('atom:entry[atom:id = $id]',
@@ -340,22 +334,20 @@ class Api(object):
            Class contructors must receive Atom Entry object and original
            entry, parsed by ElementTree.
         '''
-        objects = []
 
         while url is not None:
             feed, original_feed = self._get_atom(url)
             original_feed = ET.fromstring(original_feed)
-            objects.extend(
-                cls(self,
-                      entry,
-                      original_entry = _extract_original_entry(original_feed, entry)
-                ) for entry in feed['entries'])
+            for entry in feed['entries']:
+                yield cls(
+                        self,
+                        entry,
+                        original_entry = _extract_original_entry(original_feed, entry)
+                    )
             url = None
             for link in feed['feed'].links:
                 if link['rel'] == 'next':
                     url = link['href']
-
-        return objects
 
     def get_albums(self, username):
         url = '/api/users/%s/albums/rpublished/' % username
