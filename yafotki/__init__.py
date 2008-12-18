@@ -238,7 +238,13 @@ class Api(object):
     def _get(self, url, parser = ET.fromstring):
         url = self._build_absolute_url(url)
         logging.debug('GET from %r' % url)
-        original = self.opener.open(url).read()
+
+        headers = {}
+        if self.token is not None:
+            headers['Authorization'] = 'FimpToken realm="fotki.yandex.ru", token="%s"' % self.token
+        req = urllib2.Request(url, None, headers)
+
+        original = self.opener.open(req).read()
         return parser(original), original
 
     def _get_atom(self, url):
@@ -252,9 +258,10 @@ class Api(object):
 
         url = self._build_absolute_url(url)
         headers = {
-            'Authorization': 'FimpToken realm="fotki.yandex.ru", token="%s"' % self.token,
             'Content-Type': content_type,
         }
+        if self.token is not None:
+            headers['Authorization'] = 'FimpToken realm="fotki.yandex.ru", token="%s"' % self.token
         headers.update(extra_headers)
 
         req = request_cls(url, data, headers)
@@ -310,6 +317,7 @@ class Api(object):
         return User(self, username)
 
     def get_albums(self, username):
+        # TODO merge this method with get_photos
         albums = []
         url = '/api/users/%s/albums/rpublished/' % username
 
