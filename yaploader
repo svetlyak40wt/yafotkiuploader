@@ -26,6 +26,7 @@ import itertools
 import logging
 import os
 import sys
+import urllib
 from yafotki.required import OptionParser, Option
 from optparse import OptionGroup, IndentedHelpFormatter, SUPPRESS_USAGE
 from functools import wraps
@@ -141,19 +142,50 @@ class Uploader(object):
         user = self.api.find_user(self.config.username)
         self._print_albums(user.albums)
 
-    def get_photos(self, global_opts, global_args,
-                   command_opts, command_args):
+    def _get_photos(self, command_opts):
         user = self.api.find_user(self.config.username)
         if command_opts.album is not None:
             album = user.albums[command_opts.album - 1]
-            photos = album.photos
+            return user, album, album.photos
+        else:
+            return user, None, user.photos
+
+    def get_photos(self, global_opts, global_args,
+                   command_opts, command_args):
+        user, album, photos = self._get_photos(command_opts)
+        if album is not None:
             print 'Album "%s"' % album.title
         else:
-            photos = user.photos
             print '%s photos' % user.username
 
         for i, photo in enumerate(photos):
             print '%i) "%s"' % (i+1, photo.title)
+
+    def download_photos(self, global_opts, global_args,
+                   command_opts, command_args):
+        user, album, photos = self._get_photos(command_opts)
+
+        output_dir = command_opts.dir
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+
+        print 'Downloading photos, please, be patient, it can take some time ;-)'
+        for photo in photos:
+            url = photo.content[0].src
+            filename = photo.title
+            if '.' not in filename:
+                # May be worse to use:
+                # os.popen('file -i ' + filename, 'r').read()
+                # here but I won't.
+                filename += '.jpg'
+
+            f = open(os.path.join(output_dir, filename), 'wb')
+            try:
+                f.write(urllib.urlopen(url).read())
+                sys.stdout.write('.')
+                sys.stdout.flush()
+            finally:
+                f.close()
 
     def _print_albums(self, albums):
         for i, album in enumerate(albums):
@@ -293,6 +325,19 @@ def main():
         formatter = MyHelpFormatter("Command 'photos'")
     )
 
+    download_parser = OptionParser(
+        option_list = [
+            Option('-a', '--album', dest='album', type='int',
+                   help='Album\'s number (optional, if not given, then all user\'s photos will be downloaded.'),
+            Option('-d', '--dir', dest='dir',
+                   help='Output directory.', default='.'),
+        ],
+        usage = SUPPRESS_USAGE,
+        add_help_option = False,
+        formatter = MyHelpFormatter("Command 'download'")
+    )
+
+
     modify_album_parser = OptionParser(
         option_list = [
             Option('-a', '--album', dest='album', type='int',
@@ -367,6 +412,7 @@ def main():
         ('delete-album', delete_album_parser, uploader.delete_album),
         ('modify-album', modify_album_parser, uploader.modify_album),
         ('photos', photos_parser, uploader.get_photos),
+        ('download', download_parser, uploader.download_photos),
         ('delete-photo', delete_photo_parser, uploader.delete_photo),
         ('modify-photo', modify_photo_parser, uploader.modify_photo),
     ]
