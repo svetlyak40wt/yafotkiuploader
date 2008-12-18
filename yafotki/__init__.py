@@ -133,6 +133,12 @@ class User(object):
             self._albums = self._api.get_albums(self.username)
         return self._albums
 
+    @property
+    def photos(self):
+        url = '/api/users/%s/photos/' % self.username
+        return self._api.get_photos(url)
+
+
     def create_album(self, title, summary = ''):
         self.albums.append(
             self._api.create_album(self.username,

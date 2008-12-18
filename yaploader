@@ -144,9 +144,15 @@ class Uploader(object):
     def get_photos(self, global_opts, global_args,
                    command_opts, command_args):
         user = self.api.find_user(self.config.username)
-        album = user.albums[command_opts.album - 1]
-        print 'Album "%s"' % album.title
-        for i, photo in enumerate(album.photos):
+        if command_opts.album is not None:
+            album = user.albums[command_opts.album - 1]
+            photos = album.photos
+            print 'Album "%s"' % album.title
+        else:
+            photos = user.photos
+            print '%s photos' % user.username
+
+        for i, photo in enumerate(photos):
             print '%i) "%s"' % (i+1, photo.title)
 
     def _print_albums(self, albums):
@@ -280,7 +286,7 @@ def main():
     photos_parser = OptionParser(
         option_list = [
             Option('-a', '--album', dest='album', type='int',
-                   help='Album\'s number.', required = True),
+                   help='Album\'s number.'),
         ],
         usage = SUPPRESS_USAGE,
         add_help_option = False,
