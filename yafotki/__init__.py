@@ -192,7 +192,15 @@ class Album(AtomEntry):
 
     def save(self):
         orig = self._original_entry
-        orig.find(_ATOM_NS + 'title').text = self.title
+        for field in ('title', 'summary'):
+            value = getattr(self, field, None)
+            if value is not None:
+                e_name = _ATOM_NS + field
+                element = orig.find(e_name)
+                if element is None:
+                    element = ET.SubElement(orig, e_name)
+                element.text = value
+
         return self._api._post_atom(self.links['self']['href'],
                     data = ET.tostring(orig),
                     request_cls = PutRequest)

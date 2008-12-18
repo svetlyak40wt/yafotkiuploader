@@ -186,7 +186,7 @@ class Uploader(object):
                      command_opts, command_args):
         user = self.api.find_user(self.config.username)
         album = user.albums[command_opts.album - 1]
-        for attr in ['title', 'description']:
+        for attr in ['title', 'summary']:
             if hasattr(command_opts, attr):
                 setattr(album, attr, getattr(command_opts, attr).decode('UTF8'))
         album.save()
