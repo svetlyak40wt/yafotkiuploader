@@ -184,6 +184,18 @@ class Photo(AtomEntry):
     fields = ('title', 'tags', 'access', 'disable_comments',
               'xxx', 'hide_original', 'storage_private', 'yaru')
 
+    def _get_tags(self):
+        return u', '.join(self._tags)
+    def _set_tags(self, value):
+        self._tags = [tag.strip() for tag in value.split(u',')]
+    tags = property(_get_tags, _set_tags)
+
+    def save(self):
+        orig = self._original_entry
+        for tag in self._tags:
+            ET.SubElement(orig, _ATOM_NS + 'category', dict(term = tag))
+        return super(Photo, self).save()
+
 
 class Album(AtomEntry):
     '''Album with some photos.'''
