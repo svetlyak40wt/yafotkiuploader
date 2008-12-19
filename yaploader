@@ -194,7 +194,10 @@ class CommandUpload:
 class CommandGetAlbums:
     name = 'albums'
     description = 'Show albums list.'
-    option_list = []
+    option_list = [
+        Option('-u', '--user', dest='username',
+               help='User\'s login at Yandex.'),
+    ]
     usage = _build_usage(name, option_list)
     def run(self, uploader, opts, args):
         user = uploader.api.find_user(uploader.config.username)
@@ -207,6 +210,8 @@ class CommandGetPhotos:
     option_list = [
         Option('-a', '--album', dest='album', type='int',
                help='Album\'s number.'),
+        Option('-u', '--user', dest='username',
+               help='User\'s login at Yandex.'),
     ]
     usage = _build_usage(name, option_list)
     def run(self, uploader, opts, args):
