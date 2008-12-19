@@ -25,6 +25,8 @@ class Option (optparse.Option):
     def process (self, opt, value, values, parser):
         optparse.Option.process(self, opt, value, values, parser)
         parser.option_seen[self] = 1
+        if self.dest == 'help':
+            parser.show_help = True
 
 
 class OptionParser (optparse.OptionParser):
@@ -32,12 +34,14 @@ class OptionParser (optparse.OptionParser):
     def _init_parsing_state (self):
         optparse.OptionParser._init_parsing_state(self)
         self.option_seen = {}
+        self.show_help = False
 
     def check_values (self, values, args):
         for option in self.option_list:
             if (isinstance(option, Option) and
                 option.required and
-                not self.option_seen.has_key(option)):
+                not self.option_seen.has_key(option) and
+                not self.show_help):
                 self.error("%s not supplied" % option)
         return (values, args)
 
