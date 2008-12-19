@@ -86,6 +86,10 @@ def auth_required(func):
         return func(self, *args, **kwargs)
     return wrap
 
+def _getn(iterable, n):
+    '''Returns N-th element from iterable, or None'''
+    l = list(itertools.islice(iterable, n, n+1))
+    return l and l[0] or None
 
 class Uploader(object):
     def __init__(self):
@@ -121,7 +125,7 @@ class Uploader(object):
                command_opts, command_args):
         try:
             user = self.api.find_user(self.config.username)
-            user.albums[command_opts.album - 1].upload(
+            _getn(user.albums, command_opts.album - 1).upload(
                 command_args,
                 title = self.config.title,
                 tags = self.config.tags,
@@ -145,7 +149,7 @@ class Uploader(object):
     def _get_photos(self, command_opts):
         user = self.api.find_user(self.config.username)
         if command_opts.album is not None:
-            album = user.albums[command_opts.album - 1]
+            album = _getn(user.albums, command_opts.album - 1)
             return user, album, album.photos
         else:
             return user, None, user.photos
@@ -210,28 +214,28 @@ class Uploader(object):
     def delete_album(self, global_opts, global_args,
                      command_opts, command_args):
         user = self.api.find_user(self.config.username)
-        user.albums[command_opts.album - 1].delete()
+        _getn(user.albums, command_opts.album - 1).delete()
 
     @auth_required
     def delete_photo(self, global_opts, global_args,
                      command_opts, command_args):
         user = self.api.find_user(self.config.username)
-        album = user.albums[command_opts.album - 1]
-        album.photos[command_opts.photo - 1].delete()
+        album = _getn(user.albums, command_opts.album - 1)
+        _getn(album.photos, command_opts.photo - 1).delete()
 
     @auth_required
     def modify_album(self, global_opts, global_args,
                      command_opts, command_args):
         user = self.api.find_user(self.config.username)
-        album = user.albums[command_opts.album - 1]
+        album = _getn(user.albums, command_opts.album - 1)
         self._save_object(album, command_opts)
 
     @auth_required
     def modify_photo(self, global_opts, global_args,
                      command_opts, command_args):
         user = self.api.find_user(self.config.username)
-        album = user.albums[command_opts.album - 1]
-        photo = album.photos[command_opts.photo - 1]
+        album = _getn(user.albums, command_opts.album - 1)
+        photo = _getn(album.photos, command_opts.photo - 1)
         self._save_object(photo, command_opts)
 
     def _save_object(self, obj, update_from):
