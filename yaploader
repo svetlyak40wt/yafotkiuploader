@@ -56,6 +56,9 @@ class Config(object):
             if os.path.exists(CONFIG_PATH):
                 cfg = open(CONFIG_PATH)
                 for line in (x.strip() for x in cfg.readlines()):
+                    if line[0] == '#':
+                        continue
+
                     if '=' not in line:
                         [key, value] = [line, True]
                     else:
