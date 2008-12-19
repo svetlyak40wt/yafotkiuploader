@@ -389,16 +389,16 @@ class Api(object):
             exif = ImageExif(filename)
             try:
                 exif.readMetadata()
-                try: tags = tags or ','.join([tag.decode('utf8') \
-                                for tag in exif['Iptc.Application2.Keywords']])
+                try: tags = tags or u','.join(t for t in (tag.decode('utf8', 'ignore') \
+                                for tag in exif['Iptc.Application2.Keywords']) if t)
                 except KeyError: pass
-                try: title = title or exif['Iptc.Application2.ObjectName'].decode('utf8')
-                except KeyError: pass
-                try: description = description or \
-                        exif['Iptc.Application2.Caption'].decode('utf8')
+                try: title = title or exif['Iptc.Application2.ObjectName'].decode('utf8', 'ignore')
                 except KeyError: pass
                 try: description = description or \
-                        exif['Exif.Image.ImageDescription'].decode('utf8')
+                        exif['Iptc.Application2.Caption'].decode('utf8', 'ignore')
+                except KeyError: pass
+                try: description = description or \
+                        exif['Exif.Image.ImageDescription'].decode('utf8', 'ignore')
                 except KeyError: pass
             except IOError:
                 pass
