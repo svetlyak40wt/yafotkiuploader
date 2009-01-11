@@ -233,6 +233,8 @@ class CommandDownload:
                help='Album\'s number (optional, if not given, then all user\'s photos will be downloaded.'),
         Option('-d', '--dir', dest='dir',
                help='Output directory.', default='.'),
+        Option('-u', '--user', dest='username',
+               help='User\'s login at Yandex.'),
     ]
     usage = _build_usage(name, option_list)
     def run(self, uploader, opts, args):
