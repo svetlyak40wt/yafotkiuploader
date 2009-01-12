@@ -357,7 +357,8 @@ class Api(object):
                         original_entry = _extract_original_entry(original_feed, entry)
                     )
             url = None
-            for link in feed['feed'].links:
+            links = getattr(feed['feed'], 'links', [])
+            for link in links:
                 if link['rel'] == 'next':
                     url = link['href']
 
