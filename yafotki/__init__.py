@@ -137,6 +137,12 @@ class User(object):
         url = '/api/users/%s/photos/' % self.username
         return self._api.get_photos(url)
 
+    def get_photo(self, photo_id):
+        '''Returns iterator to all user's photos.'''
+        url = '/api/users/%s/photo/%d/' % (self.username, photo_id)
+        photos = list(self._api.get_photos(url))
+        return photos and photos[0] or None
+
     def create_album(self, title, summary = ''):
         self.albums.append(
             self._api.create_album(self.username,
@@ -187,6 +193,12 @@ class Photo(AtomEntry):
     '''One photo.'''
     fields = ('title', 'tags', 'access', 'disable_comments',
               'xxx', 'hide_original', 'storage_private', 'yaru')
+
+
+    def __init__(self, *args, **kwargs):
+        super(Photo, self).__init__(*args, **kwargs)
+        self._atom_id = self.id
+        self.id = int(self.id.split(':')[-1])
 
     def _get_tags(self):
         return u', '.join(self._tags)
