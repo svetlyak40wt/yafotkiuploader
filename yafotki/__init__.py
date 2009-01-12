@@ -208,30 +208,24 @@ class Photo(AtomEntry):
 
     @property
     def size(self):
+        class helper(object):
+            def __init__(self, **kwargs):
+                self.__dict__.update(kwargs)
+            def __getattr__(self, k):
+                return super(helper, self).__getattr__(k)()
+
         base_url = self.content[0].src
-        class getter:
-            @property
-            def original(self):
-                return base_url
-            @property
-            def large(self):
-                return re.sub('_[^_]+$', '_L', base_url)
-            @property
-            def medium(self):
-                return re.sub('_[^_]+$', '_M', base_url)
-            @property
-            def small(self):
-                return re.sub('_[^_]+$', '_S', base_url)
-            @property
-            def tiny(self):
-                return re.sub('_[^_]+$', '_XS', base_url)
-            @property
-            def thumb(self):
-                return re.sub('_[^_]+$', '_XXS', base_url)
-            @property
-            def small_thumb(self):
-                return re.sub('_[^_]+$', '_XXXS', base_url)
-        return getter()
+        gen_url = lambda size: lambda: re.sub('_[^_]+$', size, base_url)
+
+        return helper(
+            original = lambda: base_url,
+            large = gen_url('_L'),
+            medium = gen_url('_M'),
+            small = gen_url('_S'),
+            tiny = gen_url('_XS'),
+            thumb = gen_url('_XXS'),
+            small_thumb = gen_url('_XXXS'),
+        )
 
     def save(self):
         orig = self._original_entry
