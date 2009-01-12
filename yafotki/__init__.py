@@ -206,6 +206,33 @@ class Photo(AtomEntry):
         self._tags = [tag.strip() for tag in value.split(u',')]
     tags = property(_get_tags, _set_tags)
 
+    @property
+    def size(self):
+        base_url = self.content[0].src
+        class getter:
+            @property
+            def original(self):
+                return base_url
+            @property
+            def large(self):
+                return re.sub('_[^_]+$', '_L', base_url)
+            @property
+            def medium(self):
+                return re.sub('_[^_]+$', '_M', base_url)
+            @property
+            def small(self):
+                return re.sub('_[^_]+$', '_S', base_url)
+            @property
+            def tiny(self):
+                return re.sub('_[^_]+$', '_XS', base_url)
+            @property
+            def thumb(self):
+                return re.sub('_[^_]+$', '_XXS', base_url)
+            @property
+            def small_thumb(self):
+                return re.sub('_[^_]+$', '_XXXS', base_url)
+        return getter()
+
     def save(self):
         orig = self._original_entry
         for tag in self._tags:
