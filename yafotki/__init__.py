@@ -207,6 +207,12 @@ class Photo(AtomEntry):
     tags = property(_get_tags, _set_tags)
 
     @property
+    def next(self):
+        '''Returns iterator to the next photos in this album.'''
+        raise "Write me!!!"
+        return self._api.get_photos(self.links['photos']['href'])
+
+    @property
     def size(self):
         class helper(object):
             def __init__(self, **kwargs):
