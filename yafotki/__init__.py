@@ -79,7 +79,7 @@ except:
     ImageExif = None
 
 UPLOAD_URL = 'http://up.fotki.yandex.ru/upload'
-API_URL = 'http://fimp.transvaal.yandex.ru'
+API_URL = 'http://api-fotki.yandex.ru'
 
 class ACCESS:
     PUBLIC  = 1
