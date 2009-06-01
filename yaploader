@@ -455,6 +455,10 @@ def main():
     config.update(opts)
     logging.debug('Config values %r' % config)
 
+    if config.username is None:
+        logging.error('Please, specify username.')
+        sys.exit(1)
+
     command.run(uploader, opts, args)
 
 if __name__ == "__main__":
