@@ -72,12 +72,6 @@ elif len(VERSION) == 4:
 else:
     __version__ = '.'.join(str(v) for v in VERSION)
 
-try:
-    from pyexiv2 import Image as ImageExif
-except:
-    logging.warning('can\'t find python-pyexiv2 library, exif extraction will be disabled.')
-    ImageExif = None
-
 UPLOAD_URL = 'http://up.fotki.yandex.ru/upload'
 API_URL = 'http://api-fotki.yandex.ru'
 
@@ -424,6 +418,12 @@ class Api(object):
         tags = tags or u''
         title = title or os.path.basename(filename)
         description = description or u''
+
+        try:
+            from pyexiv2 import Image as ImageExif
+        except:
+            logging.warning('can\'t find python-pyexiv2 library, exif extraction will be disabled.')
+            ImageExif = None
 
         if ImageExif:
             try:
