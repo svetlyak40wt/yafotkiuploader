@@ -46,23 +46,13 @@ namespaces = {
     'f':     'yandex:fotki',
 }
 
-if feedparser._XML_AVAILABLE:
-    class _FeedParserMixin(feedparser._FeedParserMixin):
-        def _start_f_image_count(self, attrsD):
-            context = self._getContext()
-            context['image_count'] = int(attrsD['value'])
-    setattr(_FeedParserMixin, '_start_f_image-count', _FeedParserMixin._start_f_image_count)
+feedparser._FeedParserMixin.namespaces['yandex:fotki'] = 'f';
+feedparser._FeedParserMixin.namespaces['http://www.w3.org/2007/app'] = 'app';
 
-    class _StrictFeedParser(_FeedParserMixin, feedparser._StrictFeedParser):
-        def __init__(self, baseuri, baselang, encoding):
-            import xml.sax
-            if feedparser._debug: sys.stderr.write('trying StrictFeedParser\n')
-            xml.sax.handler.ContentHandler.__init__(self)
-            _FeedParserMixin.__init__(self, baseuri, baselang, encoding)
-            self.bozo = 0
-            self.exc = None
-
-    feedparser._StrictFeedParser = _StrictFeedParser
+def _start_f_image_count(self, attrsD):
+    context = self._getContext()
+    context['image_count'] = int(attrsD['value'])
+setattr(feedparser._FeedParserMixin, '_start_f_image-count', _start_f_image_count)
 
 VERSION = (0, 3, 0, 'pre')
 if len(VERSION) == 3:
