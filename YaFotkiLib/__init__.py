@@ -22,7 +22,7 @@
 #
 
 import MultipartPostHandler, urllib2, cookielib
-import os, sys, re, md5
+import os, sys, re, hashlib
 import urllib
 import logging
 import time
@@ -118,7 +118,7 @@ class Uploader(object):
 
         sid = str(int(time.time()))
         source.seek(0)
-        hash = md5.new(source.read()).hexdigest()
+        hash = hashlib.new('md5', source.read()).hexdigest()
 
         logger.debug('md5hash: %s, sid: %s, file-size: %s, piece-size: %s' % (hash, sid, file_size, piece_size))
         logger.debug('title: %s, description: %s tags: %s' % (title, description, tags))

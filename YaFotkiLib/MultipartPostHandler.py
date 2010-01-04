@@ -42,7 +42,7 @@ import urllib
 import urllib2
 import mimetools, mimetypes
 import os, stat
-import md5
+import hashlib
 class Callable:
     def __init__(self, anycallable):
         self.__call__ = anycallable
@@ -102,7 +102,7 @@ class MultipartPostHandler(urllib2.BaseHandler):
             except AttributeError, s:
                 if str(fd.__class__) == 'StringIO.StringIO':
                     file_size = len(fd.getvalue())
-                    filename = md5.md5(fd.getvalue()).hexdigest()
+                    filename = hashlib.md5(fd.getvalue()).hexdigest()
                     contenttype = 'application/octet-stream'
                 else:
                     raise AttributeError(s)
