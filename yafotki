@@ -30,6 +30,22 @@ from optparse import OptionParser
 
 import YaFotkiLib
 
+def getLastURLs(user, album, limit=1):
+    try:
+        import feedparser
+    except:
+        sys.stderr.write('Please install feedparser.py to get URL of last uploaded images\n')
+        return
+    feed = feedparser.parse('http://fotki.yandex.ru/users/%s/album/%s/atom' % (user, album))
+    for entry in feed.entries:
+        limit -= 1
+        if limit >= 0:
+            yield entry.link
+        else:
+            break
+    del feed
+    return
+
 CONFIG_PATH = '~/.fotki.conf'
 COOKIES_CACHE = '~/.fotki.cookies'
 
@@ -80,6 +96,20 @@ def init_uploader(options):
     yafotki.auth()
     return yafotki
 
+def check_and_get_albums(yafotki, options, needalbum=False):
+    albums = yafotki.get_albums()
+
+    if needalbum:
+        if not options.album:
+            print 'Please, specify an album\'s ID'
+            print_albums(albums)
+            sys.exit(2)
+        if options.album < 1 or options.album > len(albums):
+            print 'Wrong album number.'
+            sys.exit(4)
+    return albums
+
+
 def main():
     parser = OptionParser()
     parser.add_option( '-d', '--debug', dest='debug', action='store_true', help='Output debug information.', default=False)
@@ -87,6 +117,7 @@ def main():
     parser.add_option( '-u', '--user', dest='username', help='Your Yandex login.', default=None)
     parser.add_option( '-p', '--pass', dest='password', help='Your password.', default=None)
     parser.add_option( '--albums', action='store_true', dest='album_list', help='Show album list.', default=False)
+    parser.add_option( '--url', action='store_true', dest='last_list', help='Show last uploaded images.', default=False)
     parser.add_option( '-a', '--album', dest='album', type='int', help='Album to upload to.', default=config().get('default_album', None))
     parser.add_option( '--upload', dest='upload', action='store_true', help='File list to upload (obsolete).', default=False)
     (options, args) = parser.parse_args()
@@ -112,27 +143,24 @@ def main():
         print e
         sys.exit(3)
 
-    albums = yafotki.get_albums()
 
     if options.album_list:
-        print_albums(albums)
-    elif args:
-        if not options.album:
-            print 'Please, specify an album\'s ID'
-            print_albums(albums)
-            sys.exit(2)
-
-        if options.album < 1 or options.album > len(albums):
-            print 'Wrong album number.'
-            sys.exit(4)
-
-        album = albums[options.album-1]
-        for file in args:
-            print 'Uploading %s into album "%s"' % (file, album[1])
-            yafotki.post(file, album[0])
+        print_albums(check_and_get_albums(yafotki, options))
     else:
-        print 'Please, specify --upload or --albums option.'
-
+        albums = check_and_get_albums(yafotki, options, needalbum=True)
+        album = albums[options.album-1]
+        if args:
+            for file in args:
+                print 'Uploading %s into album "%s"' % (file, album[1])
+                yafotki.post(file, album[0])
+            if options.last_list:
+                for url in getLastURLs(options.username, album[0], limit=len(args)):
+                    print url, 'uploaded'
+        elif options.last_list:
+            for url in getLastURLs(options.username, album[0]):
+                print url
+        else:
+            print 'Please, specify --upload, --url or --albums option.'
     sys.exit(0)
 
 if __name__ == "__main__":
