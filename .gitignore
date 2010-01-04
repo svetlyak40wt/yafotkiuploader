@@ -1,2 +1,4 @@
 build
 local_*
+.*.swp
+*.pyc
