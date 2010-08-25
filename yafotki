@@ -154,10 +154,10 @@ def main():
                 print 'Uploading %s into album "%s"' % (file, album[1])
                 yafotki.post(file, album[0])
             if options.last_list:
-                for url in getLastURLs(options.username, album[0], limit=len(args)):
+                for url in getLastURLs(yafotki.username, album[0], limit=len(args)):
                     print url, 'uploaded'
         elif options.last_list:
-            for url in getLastURLs(options.username, album[0]):
+            for url in getLastURLs(yafotki.username, album[0]):
                 print url
         else:
             print 'Please, specify --upload, --url or --albums option.'
