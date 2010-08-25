@@ -26,6 +26,8 @@ import itertools
 import logging
 import os
 import sys
+import locale
+
 from optparse import OptionParser
 
 import YaFotkiLib
@@ -151,7 +153,7 @@ def main():
         album = albums[options.album-1]
         if args:
             for file in args:
-                print 'Uploading %s into album "%s"' % (file, album[1])
+                print 'Uploading %s into album "%s"' % (file, album[1].encode(locale.getlocale()[1]))
                 yafotki.post(file, album[0])
             if options.last_list:
                 for url in getLastURLs(yafotki.username, album[0], limit=len(args)):
@@ -164,5 +166,6 @@ def main():
     sys.exit(0)
 
 if __name__ == "__main__":
+    locale.setlocale(locale.LC_ALL, '')
     main()
 
