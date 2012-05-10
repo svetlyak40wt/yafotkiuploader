@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 ####
-# 05/2008 Alexander Atemenko <svetlyak.40wt@gmail.com>
+# 2008-2012 Alexander Artemenko <svetlyak.40wt@gmail.com>
 #
 # Special thanks to:
 # Grigory Bakunov <bobuk@justos.org>
@@ -27,11 +27,9 @@ import logging
 import os
 import sys
 import urllib
-from yafotki.required import OptionParser, Option
+from yafotki.utils import OptionParser, Option
 from optparse import OptionGroup, IndentedHelpFormatter, SUPPRESS_USAGE
 from functools import wraps
-
-from pdb import set_trace
 
 import yafotki
 
@@ -47,25 +45,31 @@ class Config(object):
         'xxx': 'no',
         'hide_original': 'no',
         'storage_private': 'no',
-        'yaru': 'yes',
     }
 
     def __init__(self):
         self.__dict__ = self._shared
         if not self._loaded:
             if os.path.exists(CONFIG_PATH):
-                cfg = open(CONFIG_PATH)
-                for line in (x.strip() for x in cfg.readlines()):
-                    if line[0] == '#':
-                        continue
+                with open(CONFIG_PATH) as cfg:
+                    for line in (x.strip() for x in cfg.readlines()):
+                        if line[0] == '#':
+                            continue
 
-                    if '=' not in line:
-                        [key, value] = [line, True]
-                    else:
-                        [key, value] = [x.strip() for x in line.split('=')]
-                    setattr(self, key, value)
-                cfg.close()
-                self._loaded = True
+                        if '=' not in line:
+                            [key, value] = [line, True]
+                        else:
+                            [key, value] = [x.strip() for x in line.split('=')]
+                        setattr(self, key, value)
+
+            if os.path.exists(TOKEN_CACHE):
+                with open(TOKEN_CACHE) as f:
+                    username, token = f.readline().split(':')
+                    self.token = token.strip()
+                    self.username = username.strip()
+
+            self._loaded = True
+
 
     def update(self, opts):
         for key in dir(opts):
@@ -79,6 +83,7 @@ class Config(object):
 
     def __repr__(self):
         return repr(self.__dict__)
+
 
 def auth_required(func):
     @wraps(func)
@@ -99,7 +104,7 @@ _photo_options = [
            help='Image\'s title (by default it will be extracted from exif).'),
     Option('-k', '--tags', dest='tags',
            help='Comma separated tags/keywords (by default it will be extracted from exif).'),
-    Option('-d', '--description', dest='description',
+    Option('-s', '--summary', dest='summary',
            help='Short description (by default it will be extracted from exif).'),
     Option('--access', dest='access_type',
            help='String value, one from the following list: ['
@@ -115,11 +120,8 @@ _photo_options = [
            help='Hide original image from other users, "yes" or "no" (default %default)).',
            default=Config().hide_original),
     Option('--storage-private', dest='storage_private',
-           help='Disable image downloadig from other sources, "yes" or "no" (default %default)).',
+           help='Disable image downloading from other sources, "yes" or "no" (default %default)).',
            default=Config().storage_private),
-    Option('-y', '--to-yaru', dest='yaru',
-           help='Publish on i.ya.ru, "yes" or "no" (default %default)).',
-           default=Config().yaru),
 ]
 
 def _build_usage(name, opts, appendix = None):
@@ -138,10 +140,8 @@ class CommandAuth:
     name = 'auth'
     description = 'Authenticate and store token in ~/.fotki.token.'
     option_list = [
-        Option('-u', '--user', dest='username',
+        Option('-u', '--username', dest='username',
                help='Your login.', required = True),
-        Option('-p', '--pass', dest='password',
-               help='Your password.')
     ]
     usage = _build_usage(name, option_list)
     def run(self, uploader, opts, args):
@@ -156,9 +156,9 @@ class CommandAuth:
                    getpass.getpass('Input password: ')
 
         uploader.api.auth(uploader.config.username, password)
-        f = open(TOKEN_CACHE, 'w+')
-        f.write(uploader.api.token)
-        f.close()
+        with open(TOKEN_CACHE, 'w+') as f:
+            f.write('%s: %s' % (uploader.config.username, uploader.api.token))
+
         print 'New token was written to %r' % TOKEN_CACHE
 
 
@@ -170,25 +170,29 @@ class CommandUpload:
                help='Album\'s number (required).', required=True),
     ] + _photo_options
     usage = _build_usage(name, option_list, 'files')
+
     @auth_required
     def run(self, uploader, opts, args):
-        try:
-            user = uploader.api.find_user(uploader.config.username)
-            _getn(user.albums, opts.album - 1).upload(
-                args,
-                title = uploader.config.title,
-                tags = uploader.config.tags,
-                description = uploader.config.description,
-                access_type = yafotki.ACCESS.fromstring(uploader.config.access_type),
-                disable_comments = uploader.config.disable_comments,
-                xxx = uploader.config.xxx,
-                hide_orig = uploader.config.hide_original,
-                storage_private = uploader.config.storage_private,
-                yaru = uploader.config.yaru,
-            )
-        except IndexError:
-            logging.error('Wrong album number.')
+        user = uploader.api.find_user(uploader.config.username)
+        album = _getn(user.albums, opts.album - 1)
+        if album is None:
+            logging.error('Album not found.')
             sys.exit(1)
+
+        for filename in args[1:]:
+            photo = album.upload(
+                filename,
+                title=uploader.config.title,
+                tags=uploader.config.tags,
+                description=uploader.config.description,
+                access_type=yafotki.ACCESS.fromstring(uploader.config.access_type),
+                disable_comments=uploader.config.disable_comments,
+                xxx=uploader.config.xxx,
+                hide_orig=uploader.config.hide_original,
+                storage_private=uploader.config.storage_private,
+            )
+
+            print 'Photo uploaded: %r' % photo.links['alternate']
 
 
 class CommandGetAlbums:
@@ -199,6 +203,7 @@ class CommandGetAlbums:
                help='User\'s login at Yandex.'),
     ]
     usage = _build_usage(name, option_list)
+
     def run(self, uploader, opts, args):
         user = uploader.api.find_user(uploader.config.username)
         uploader._print_albums(user.albums)
@@ -262,6 +267,7 @@ class CommandDownload:
             finally:
                 f.close()
 
+
 class CommandCreateAlbum:
     name = 'create-album'
     description = 'Create new album.'
@@ -275,7 +281,9 @@ class CommandCreateAlbum:
     @auth_required
     def run(self, uploader, opts, args):
         user = uploader.api.find_user(uploader.config.username)
-        user.create_album(opts.title, opts.summary)
+        album = user.create_album(opts.title, opts.summary)
+        print 'Album was created: ' + album.links['alternate']
+
 
 class CommandDeleteAlbum:
     name = 'delete-album'
@@ -288,7 +296,18 @@ class CommandDeleteAlbum:
     @auth_required
     def run(self, uploader, opts, args):
         user = uploader.api.find_user(uploader.config.username)
-        _getn(user.albums, opts.album - 1).delete()
+        album = _getn(user.albums, opts.album - 1)
+        if album is None:
+            logging.error('Album not found')
+            sys.exit(1)
+        else:
+            confirm = raw_input('Do you really want to delete album "%s" (yes/no)?\n' % yafotki.smart_str(album.title))
+            if confirm == 'yes':
+                album.delete()
+                print 'Album was deleted'
+            else:
+                print 'Cancelled'
+
 
 class CommandDeletePhoto:
     name = 'delete-photo'
@@ -304,7 +323,17 @@ class CommandDeletePhoto:
     def run(self, uploader, opts, args):
         user = uploader.api.find_user(uploader.config.username)
         album = _getn(user.albums, opts.album - 1)
-        _getn(album.photos, opts.photo - 1).delete()
+        if album is None:
+            logging.error('Album not found')
+            sys.exit(1)
+        photo = _getn(album.photos, opts.photo - 1)
+        if photo is None:
+            logging.error('Photo not found')
+            sys.exit(1)
+
+        photo.delete()
+        print 'Photo was deleted'
+
 
 class CommandModifyAlbum:
     name = 'modify-album'
@@ -323,6 +352,8 @@ class CommandModifyAlbum:
         user = uploader.api.find_user(uploader.config.username)
         album = _getn(user.albums, opts.album - 1)
         uploader._save_object(album, opts)
+        print 'Album was modified'
+
 
 class CommandModifyPhoto:
     name = 'modify-photo'
@@ -340,18 +371,21 @@ class CommandModifyPhoto:
         album = _getn(user.albums, opts.album - 1)
         photo = _getn(album.photos, opts.photo - 1)
         uploader._save_object(photo, opts)
+        print 'Photo was modified'
 
 
 class Uploader(object):
+    client_id = '34d63f8827b54629b45dad99bda613a3'
+    secret = 'f745c0a7fc884baa95ed113284e46b26'
+
     def __init__(self):
         self.config = Config()
 
-        self.api = yafotki.Api()
-
-        if os.path.exists(TOKEN_CACHE):
-            f = open(TOKEN_CACHE)
-            self.api.token = f.readline()
-            f.close()
+        self.api = yafotki.Api(
+            self.client_id,
+            self.secret,
+            self.config.token,
+        )
 
     def _get_photos(self, opts):
         user = self.api.find_user(self.config.username)
@@ -363,8 +397,8 @@ class Uploader(object):
 
     def _print_albums(self, albums):
         for i, album in enumerate(albums):
-            if album.image_count:
-                image_count = '%d image(s)' % album.image_count
+            if album.imageCount:
+                image_count = '%d image(s)' % album.imageCount
             else:
                 image_count = 'empty'
 
@@ -373,12 +407,14 @@ class Uploader(object):
                     (i+1, album.title, album.id, image_count)
             else:
                 print '%i) "%s", %s' % (i+1, album.title, image_count)
+
     def _save_object(self, obj, update_from):
         for field in obj.fields:
             value = getattr(update_from, field, None)
             if value is not None:
                 setattr(obj, field, value.decode('UTF8'))
         obj.save()
+
 
 class MyHelpFormatter(IndentedHelpFormatter):
     def __init__(self, heading):
@@ -388,6 +424,7 @@ class MyHelpFormatter(IndentedHelpFormatter):
     def format_heading(self, heading):
         return '%*s%s:\n' % (self.current_indent, "", self.heading)
 
+
 def main():
     usage = 'usage: %prog command [options] [args]'
     option_list = [
@@ -395,9 +432,8 @@ def main():
                 help='Print help and exit.', default=False),
         Option('-v', '--verbose', dest='verbose', action='store_true',
                 help='Output more information.', default=False),
-        Option('--version', dest='version', action='store_true',
+        Option('-q', '--version', dest='version', action='store_true',
                 help='Show version number and quit.', default=False),
-        Option('--token', dest='token', help='Auth token.', default=None),
     ]
 
     uploader = Uploader()
@@ -420,9 +456,9 @@ def main():
         usage = getattr(command, 'usage', usage)
 
     parser = OptionParser(
-        option_list = option_list,
-        usage = usage,
-        add_help_option = False,
+        option_list=option_list,
+        usage=usage,
+        add_help_option=False,
     )
 
     def print_help():
@@ -431,33 +467,26 @@ def main():
             print '\nCommands:'
             for cmd in commands.values():
                 print '%16s %s' % (cmd.name, getattr(cmd, 'description', ''))
-        sys.exit(1)
-
-    if command is None:
-        print_help()
 
     opts, args = parser.parse_args(args)
 
-    if opts.help:
+    if opts.version:
+        print 'Python uploader for http://fotki.yandex.ru, version %s.' % yafotki.__version__
+        print 'For more information and new versions, visit http://svetlyak.ru.'
+        sys.exit(0)
+
+    if opts.help or command is None:
         print_help()
+        sys.exit(1)
 
     if opts.verbose:
         logging.basicConfig(level = logging.DEBUG, format = '%(message)s')
     else:
         logging.basicConfig(level = logging.WARNING, format = '%(message)s')
 
-    if opts.version:
-        logging.error('Python uploader for http://fotki.yandex.ru, version %s.' % yafotki.VERSION)
-        logging.error('For more information and new versions, visit http://svetlyak.ru.')
-        sys.exit(0)
-
     config = Config()
     config.update(opts)
     logging.debug('Config values %r' % config)
-
-    if config.username is None:
-        logging.error('Please, specify username.')
-        sys.exit(1)
 
     command.run(uploader, opts, args)
 

@@ -1,4 +1,4 @@
-build
-local_*
 .*.swp
 *.pyc
+/build
+/env

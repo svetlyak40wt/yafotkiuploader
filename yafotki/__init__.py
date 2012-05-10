@@ -1,8 +1,7 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 ####
-# 05/2008 Alexander Atemenko <svetlyak.40wt@gmail.com>
+# 2008-2012 Alexander Artemenko <svetlyak.40wt@gmail.com>
 #
 # Special thanks to:
 # Grigory Bakunov <bobuk@justos.org>
@@ -21,40 +20,15 @@
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 #
 
-import MultipartPostHandler, urllib2, cookielib
-import os, sys, re, md5
-import urllib
-import feedparser
 import logging
+import os, sys, re, md5
+import requests
 import time
-from datetime import datetime
+
+import anyjson as json
 
 
-from pdb import set_trace
-from xml.dom import minidom
-from lxml import etree as ET
-from lxml.builder import ElementMaker
-from StringIO import StringIO
-
-_ATOM = 'http://www.w3.org/2005/Atom'
-_ATOM_NS = '{%s}' % _ATOM
-atom = ElementMaker(namespace = _ATOM)
-namespaces = {
-    'atom':  _ATOM,
-    'app':   'http://www.w3.org/2007/app',
-    'xhtml': 'http://www.w3.org/1999/xhtml',
-    'f':     'yandex:fotki',
-}
-
-feedparser._FeedParserMixin.namespaces['yandex:fotki'] = 'f';
-feedparser._FeedParserMixin.namespaces['http://www.w3.org/2007/app'] = 'app';
-
-def _start_f_image_count(self, attrsD):
-    context = self._getContext()
-    context['image_count'] = int(attrsD['value'])
-setattr(feedparser._FeedParserMixin, '_start_f_image-count', _start_f_image_count)
-
-VERSION = (0, 3, 0, 'pre')
+VERSION = (0, 3, 0)
 if len(VERSION) == 3:
     __version__ = '%d.%d.%d' % VERSION
 elif len(VERSION) == 4:
@@ -62,7 +36,6 @@ elif len(VERSION) == 4:
 else:
     __version__ = '.'.join(str(v) for v in VERSION)
 
-UPLOAD_URL = 'http://up.fotki.yandex.ru/upload'
 API_URL = 'http://api-fotki.yandex.ru'
 
 class ACCESS:
@@ -85,25 +58,18 @@ class ACCESS:
     def fromstring(v):
         return ACCESS._val[v]
 
-def encrypt(text, key, b64encode=True):
-    import os,  subprocess
-    cmd = ['yamrsa-encrypt']
-    if not b64encode:
-        cmd.append('--no-b64encode')
-    cmd.extend([str(key), text])
-    p = subprocess.Popen(cmd, stdout=subprocess.PIPE)
-    return p.stdout.read()
 
-class FileNotFound(RuntimeWarning): pass
-class NoPasswdOrCallback(RuntimeError): pass
-class AuthError(RuntimeError): pass
+def smart_str(value):
+    if isinstance(value, unicode):
+        return value.encode('utf-8')
+    return value
 
-class DeleteRequest(urllib2.Request):
-    def get_method(self):
-        return 'DELETE'
-class PutRequest(urllib2.Request):
-    def get_method(self):
-        return 'PUT'
+
+def smart_unicode(value):
+    if isinstance(value, str):
+        return value.decode('utf-8')
+    return value
+
 
 class User(object):
     def __init__(self, api, username):
@@ -128,26 +94,20 @@ class User(object):
         return photos and photos[0] or None
 
     def create_album(self, title, summary = ''):
-        self.albums.append(
-            self._api.create_album(self.username,
-                                  title, summary))
+        return self._api.create_album(self.username,
+                              title, summary)
 
-class AtomEntry(object):
+
+class Entry(object):
     '''Base object for all atom entries.
        It holds all attributes and builds link map.'''
     fields = () # overwrite this to make these fields storable
 
-    def __init__(self, api, entry, original_entry):
+    def __init__(self, api, entry):
         self._api = api
         self._entry = entry
-        self._original_entry = original_entry
 
         for key, value in entry.iteritems():
-            if key.endswith('_parsed'):
-                key = key[:-7]
-                value = datetime(*value[:6])
-            if key == 'links':
-                value = dict((link['rel'], link) for link in value)
             if getattr(self, key, None) is None:
                 setattr(self, key, value)
 
@@ -155,28 +115,30 @@ class AtomEntry(object):
         return repr(self.__dict__)
 
     def save(self):
-        orig = self._original_entry
-        for field in self.fields:
-            value = getattr(self, field, None)
-            if value is not None:
-                e_name = _ATOM_NS + field
-                element = orig.find(e_name)
-                if element is None:
-                    element = ET.SubElement(orig, e_name)
-                element.text = value
+        entry = self._entry.copy()
 
-        return self._api._post_atom(self.links['edit']['href'],
-                    data = ET.tostring(orig),
-                    request_cls = PutRequest)
+        for key in self.fields:
+            value = getattr(self, key, None)
+            if value is not None:
+                entry[key] = value
+
+        if 'tags' in entry:
+            entry['tags'] = dict((tag, '') for tag in entry['tags'])
+
+        return self._api._post(
+            self.links['edit'],
+            data=entry,
+            method='PUT',
+        )
 
     def delete(self):
-        self._api.delete_object(self.links['edit']['href'])
+        self._api.delete_object(self.links['edit'])
 
 
-class Photo(AtomEntry):
+class Photo(Entry):
     '''One photo.'''
     fields = ('title', 'tags', 'access', 'disable_comments',
-              'xxx', 'hide_original', 'storage_private', 'yaru')
+              'xxx', 'hide_original', 'storage_private', 'summary')
 
 
     def __init__(self, *args, **kwargs):
@@ -185,16 +147,15 @@ class Photo(AtomEntry):
         self.id = int(self.id.split(':')[-1])
 
     def _get_tags(self):
-        return u', '.join(self._tags)
-    def _set_tags(self, value):
-        self._tags = [tag.strip() for tag in value.split(u',')]
-    tags = property(_get_tags, _set_tags)
+        return self._tags
 
-    @property
-    def next(self):
-        '''Returns iterator to the next photos in this album.'''
-        raise "Write me!!!"
-        return self._api.get_photos(self.links['photos']['href'])
+    def _set_tags(self, value):
+        if isinstance(value, basestring):
+            self._tags = [v.strip() for v in value.split(',')]
+        else:
+            self._tags = value.keys()
+
+    tags = property(_get_tags, _set_tags)
 
     @property
     def size(self):
@@ -217,135 +178,104 @@ class Photo(AtomEntry):
             small_thumb = gen_url('_XXXS'),
         )
 
-    def save(self):
-        orig = self._original_entry
-        for tag in self._tags:
-            ET.SubElement(orig, _ATOM_NS + 'category', dict(term = tag))
-        return super(Photo, self).save()
 
-
-class Album(AtomEntry):
+class Album(Entry):
     '''Album with some photos.'''
     fields = ('title', 'summary')
 
     def upload(self,
-               photos,
-               title = None,
-               tags = None,
-               description = None,
-               access_type = ACCESS.PUBLIC,
-               disable_comments = False,
-               xxx = False,
-               hide_orig = False,
-               storage_private = False,
-               yaru = True):
+               filename,
+               title=None,
+               tags=None,
+               description=None,
+               access_type=ACCESS.PUBLIC,
+               disable_comments=False,
+               xxx=False,
+               hide_orig=False,
+               storage_private=False,
+            ):
 
-        album_id = self.id.split(':')[-1]
-        for photo in photos:
-            self._api.upload(album_id, photo, title, tags,
-                description, access_type, disable_comments,
-                xxx, hide_orig, storage_private, yaru)
+        return self._api.upload(self, filename, title, tags,
+            description, access_type, disable_comments,
+            xxx, hide_orig, storage_private)
 
     @property
     def photos(self):
         '''Returns iterator to all photos in this album.'''
-        return self._api.get_photos(self.links['photos']['href'])
-
-
-def _extract_original_entry(orig, entry):
-    entries = orig.xpath('atom:entry[atom:id = $id]',
-        id = entry.id, namespaces = namespaces)
-    if len(entries) == 1:
-        return entries[0]
-    return None
+        return self._api.get_photos(self.links['photos'])
 
 
 class Api(object):
     def _build_absolute_url(self, url):
         return url.startswith('http') and url or (API_URL + url)
 
-    def __init__(self):
-        self.token = None
-        self.opener = urllib2.build_opener(
-            urllib2.HTTPCookieProcessor(),
-            MultipartPostHandler.MultipartPostHandler)
+    def __init__(self, client_id, secret, token=None):
+        self.client_id = client_id
+        self.secret = secret
+        self.token = token
 
-    def _get(self, url, parser = ET.fromstring):
+    def _headers(self):
+        headers = {'Accept': 'application/json'}
+        if self.token:
+            headers['Authorization'] = 'OAuth ' + self.token
+        return headers
+
+    def _get(self, url, parser = None):
         url = self._build_absolute_url(url)
         logging.debug('GET from %r' % url)
+        response = requests.get(url, headers=self._headers())
+        assert response.status_code == 200, response.content
+        return json.loads(response.content)
 
-        headers = {}
-        if self.token is not None:
-            headers['Authorization'] = 'FimpToken realm="fotki.yandex.ru", token="%s"' % self.token
-        req = urllib2.Request(url, None, headers)
-
-        original = self.opener.open(req).read()
-        return parser(original), original
-
-    def _get_atom(self, url):
-        return self._get(url, feedparser.parse)
-
-    def _post(self, url, data,
-              content_type = 'application/atom+xml; type=entry',
-              extra_headers = {},
-              parser = ET.fromstring,
-              request_cls = urllib2.Request):
-
+    def _delete(self, url, parser = None):
         url = self._build_absolute_url(url)
-        headers = {
-            'Content-Type': content_type,
-        }
-        if self.token is not None:
-            headers['Authorization'] = 'FimpToken realm="fotki.yandex.ru", token="%s"' % self.token
-        headers.update(extra_headers)
+        logging.debug('DELETE %r' % url)
+        response = requests.delete(url, headers=self._headers())
+        assert response.status_code == 204, response.content
 
-        req = request_cls(url, data, headers)
-        logging.debug('%s to %r: %r %r' % (req.get_method(), url, data, headers))
-        try:
-            data = self.opener.open(req).read()
-        except urllib2.HTTPError, e:
-            if e.code >= 200 and e.code < 300:
-                data = e.read()
-            else:
-                logging.error('HTTPError, data: %r' % e.read())
-                raise
+    def _post(self, url, data=None, files=None, method='POST', extra_headers=None):
+        url = self._build_absolute_url(url)
 
-        return parser(data)
+        headers = self._headers()
 
-    def _post_atom(self, url, data = {},
-                   content_type = 'application/atom+xml; type=entry',
-                   extra_headers = {},
-                   request_cls = urllib2.Request):
-        return self._post(url, data,
-                content_type = content_type,
-                extra_headers = extra_headers,
-                parser = feedparser.parse,
-                request_cls = request_cls)
+        if files is None:
+            # Если файлов нет, то отправляем, как JSON,
+            # в противном случае, отправляем, как Multipart
+            data = json.dumps(data)
+            headers['Content-type'] = 'application/json; charset=utf-8; type=entry'
+
+        if extra_headers is not None:
+            headers.update(extra_headers)
+
+        logging.debug('%s to %r: %r' % (method, url, data))
+        response = getattr(requests, method.lower())(url, data=data, files=files, headers=headers)
+        assert response.status_code >= 200 and response.status_code < 300, response.content
+
+        if response.status_code == 201:
+            return self._get(response.headers['location'])
+
+        return None
 
     def delete_object(self, url):
-        return self._post_atom(url, request_cls = DeleteRequest)
+        return self._delete(url)
 
     def auth(self, username, password):
         self.username, self.password = username, password
 
-        xml, original_xml = self._get('/fimp-key/')
+        response = requests.post(
+            'https://oauth.yandex.ru/token',
+            data=dict(
+                grant_type='password',
+                username=username,
+                password=password,
+                client_id=self.client_id,
+                client_secret=self.secret,
+            ),
+        )
 
-        key = xml.find('key')
-        request_id = xml.find('request_id')
-
-        if key is None or request_id is None:
-            raise Exception('Can\'t get public key.')
-
-        credentials = '<credentials login="%s" password="%s"/>' % (self.username, self.password)
-        credentials = encrypt(credentials, key.text)
-        xml = self._post('/fimp-token/', dict(
-                            credentials = credentials,
-                            request_id = request_id.text))
-        token = xml.find('token')
-        if token is None:
-            raise Exception('Can\'t get token.')
-
-        self.token = token.text
+        assert response.status_code == 200, response.content
+        data = json.loads(response.content)
+        self.token = data['access_token']
         return self.token
 
     def find_user(self, username):
@@ -359,19 +289,13 @@ class Api(object):
         '''
 
         while url is not None:
-            feed, original_feed = self._get_atom(url)
-            original_feed = ET.fromstring(original_feed)
-            for entry in feed['entries']:
+            data = self._get(url)
+            for entry in data['entries']:
                 yield cls(
                         self,
                         entry,
-                        original_entry = _extract_original_entry(original_feed, entry)
                     )
-            url = None
-            links = getattr(feed['feed'], 'links', [])
-            for link in links:
-                if link['rel'] == 'next':
-                    url = link['href']
+            url = data['links'].get('next')
 
     def get_albums(self, username):
         url = '/api/users/%s/albums/rpublished/' % username
@@ -380,30 +304,32 @@ class Api(object):
     def get_photos(self, url):
         return self._get_object_list(url, Photo)
 
-    def create_album(self, username, title, summary = ''):
+    def create_album(self, username, title, summary=''):
         title = title or 'Default'
         summary = summary or ''
-        xml = ET.tostring(
-                atom.entry(
-                    atom.title(title.decode('utf-8')),
-                    atom.summary(summary.decode('utf-8'))))
 
-        feed, original_feed = self._post_atom('/api/users/%s/albums/' % username, xml)
-        original_feed = ET.fromstring(original_feed)
-        original_entry = _extract_original_entry(original_feed, entry)
-        return Album(self, feed['entries'][0], original_entry)
+        url = '/api/users/%s/albums/' % username
+        entry = self._post(
+            url,
+            data=dict(
+                title=smart_unicode(title),
+                summary=smart_unicode(summary),
+            )
+        )
 
-    def upload(self, album_id, filename,
-               title = None, tags = None,
-               description = None,
-               access_type = ACCESS.PUBLIC,
-               disable_comments = False,
-               xxx = False,
-               hide_orig = False,
-               storage_private = False,
-               yaru = True,
+        return Album(self, entry)
+
+    def upload(self, album, filename,
+               title=None,
+               tags=None,
+               description=None,
+               access_type=ACCESS.PUBLIC,
+               disable_comments=False,
+               xxx=False,
+               hide_orig=False,
+               storage_private=False,
                ):
-        logging.debug('Uploading %r to album with id %r' % (filename, album_id))
+        logging.debug('Uploading %r to album %s' % (filename, album))
 
         tags = tags or u''
         title = title or os.path.basename(filename)
@@ -420,16 +346,16 @@ class Api(object):
                 exif = ImageExif(filename)
                 try:
                     exif.readMetadata()
-                    try: tags = tags or u','.join(t for t in (tag.decode('utf8', 'ignore') \
+                    try: tags = tags or u','.join(t for t in (smart_unicode(tag) \
                                     for tag in exif['Iptc.Application2.Keywords']) if t)
                     except KeyError: pass
-                    try: title = title or exif['Iptc.Application2.ObjectName'].decode('utf8', 'ignore')
+                    try: title = smart_unicode(title or exif['Iptc.Application2.ObjectName'])
                     except KeyError: pass
-                    try: description = description or \
-                            exif['Iptc.Application2.Caption'].decode('utf8', 'ignore')
+                    try: description = smart_unicode(description or \
+                            exif['Iptc.Application2.Caption'])
                     except KeyError: pass
-                    try: description = description or \
-                            exif['Exif.Image.ImageDescription'].decode('utf8', 'ignore')
+                    try: description = smart_unicode(description or \
+                            exif['Exif.Image.ImageDescription'])
                     except KeyError: pass
                 except IOError:
                     pass
@@ -442,24 +368,29 @@ class Api(object):
             return no
 
         data = dict(
-            image = open(filename, 'rb'),
-            title = title.encode('utf8'),
-            tags = tags.encode('utf8'),
-            description = description.encode('utf8'),
-            access_type = ACCESS.tostring(access_type),
-            album = str(album_id),
-            disable_comments = to_bool(disable_comments),
-            xxx = to_bool(xxx),
-            hide_orig = to_bool(hide_orig),
-            storage_private = to_bool(storage_private),
-            yaru = to_bool(yaru, '1', '0'),
-            pub_channel = 'Python API',
-            app_platform = sys.platform,
-            app_version = __version__,
+            title=smart_str(title),
+            tags=smart_str(tags),
+            description=smart_str(description),
+            access_type=ACCESS.tostring(access_type),
+            disable_comments=to_bool(disable_comments),
+            xxx=to_bool(xxx),
+            hide_orig=to_bool(hide_orig),
+            storage_private=to_bool(storage_private),
+            pub_channel='Python API',
+            app_platform=sys.platform,
+            app_version=__version__,
+        )
+        files = dict(
+            image=open(filename, 'rb'),
         )
 
-        print 'Photo: %r' % (self._post('/fimp/post/', data,
-            extra_headers = dict(
-                Slug = os.path.basename(filename)),
-            parser = lambda x: x))
+        response = self._post(
+            album.links['photos'],
+            data=data,
+            files=files,
+            extra_headers=dict(
+                Slug = os.path.basename(filename)
+            ),
+        )
+        return Photo(self, response)
 
