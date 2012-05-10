@@ -381,7 +381,7 @@ class Api(object):
             app_version=__version__,
         )
         files = dict(
-            image=open(filename, 'rb'),
+            image=open(smart_unicode(filename), 'rb'),
         )
 
         response = self._post(
