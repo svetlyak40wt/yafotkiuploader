@@ -21,7 +21,7 @@
 #
 
 import logging
-import os, sys, re, md5
+import os, sys, re
 import requests
 import time
 
