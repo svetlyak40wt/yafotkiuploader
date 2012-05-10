@@ -1,4 +1,5 @@
 .*.swp
 *.pyc
-local_*
 *.egg-info
+/build
+/env
