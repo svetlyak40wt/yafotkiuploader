@@ -168,6 +168,9 @@ class CommandUpload:
     option_list = [
         Option('-a', '--album', type='int', dest='album',
                help='Album\'s number (required).', required=True),
+        Option('-o', '--output', type = 'str', dest='output', default='alternate',
+               help="Link output format.", required=False)
+
     ] + _photo_options
     usage = _build_usage(name, option_list, 'files')
 
@@ -191,8 +194,16 @@ class CommandUpload:
                 hide_orig=uploader.config.hide_original,
                 storage_private=uploader.config.storage_private,
             )
-
-            print 'Photo uploaded: %r' % photo.links['alternate']
+            if not uploader.config.output or uploader.config.output  == 'alternate':
+                print 'Photo uploaded: %r' % photo.links['alternate']
+            else:
+                if uploader.config.output in photo.img:
+                    print photo.img[uploader.config.output]['href']
+                else:
+                    logging.error("This image cannot work with output format `%s'.\nOnly %s." %
+                        (uploader.config.output, ', '.join(photo.img.keys()))
+                    )
+                    sys.exit(1)
 
 
 class CommandGetAlbums:
