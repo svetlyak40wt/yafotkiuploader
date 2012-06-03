@@ -446,7 +446,9 @@ def main():
                 help='Print help and exit.', default=False),
         Option('-v', '--verbose', dest='verbose', action='store_true',
                 help='Output more information.', default=False),
-        Option('-q', '--version', dest='version', action='store_true',
+        Option('-q', '--quiet', dest='quiet', action='store_true',
+                help='Output less information.', default=False),
+        Option('-V', '--version', dest='version', action='store_true',
                 help='Show version number and quit.', default=False),
     ]
 
@@ -495,6 +497,8 @@ def main():
 
     if opts.verbose:
         logging.basicConfig(level = logging.DEBUG, format = '%(message)s')
+    elif opts.quiet:
+        logging.basicConfig(level = logging.ERROR, format = '%(message)s')
     else:
         logging.basicConfig(level = logging.WARNING, format = '%(message)s')
 
