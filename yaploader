@@ -181,7 +181,10 @@ class CommandUpload:
         if album is None:
             logging.error('Album not found.')
             sys.exit(1)
-
+        if uploader.config.output not in ['orig', 'alternate', 'all',
+            'XXXS', 'XXS', 'XS', 'S', 'M', 'L', 'XL', 'XXL', 'XXXL']:
+            logging.error("Unknown output format")
+            sys.exit(1)
         for filename in args[1:]:
             photo = album.upload(
                 filename,
